@@ -41,7 +41,6 @@ class DBInbound {
         this.port = 0;
         this.protocol = "";
         this.settings = "";
-        this.streamSettings = "";
         this.tag = "";
         this.sniffing = "";
 
@@ -59,29 +58,20 @@ class DBInbound {
         this.total = toFixed(gb * ONE_GB, 0);
     }
 
-    get isVMess() {
-        return this.protocol === Protocols.VMESS;
-    }
-
-    get isVLess() {
-        return this.protocol === Protocols.VLESS;
-    }
-
-    get isTrojan() {
-        return this.protocol === Protocols.TROJAN;
-    }
-
-    get isSS() {
-        return this.protocol === Protocols.SHADOWSOCKS;
-    }
-
-    get isSocks() {
-        return this.protocol === Protocols.SOCKS;
-    }
-
-    get isHTTP() {
-        return this.protocol === Protocols.HTTP;
-    }
+    get isVMess()     { return this.protocol === Protocols.VMESS; }
+    get isVLess()     { return this.protocol === Protocols.VLESS; }
+    get isTrojan()    { return this.protocol === Protocols.TROJAN; }
+    get isSS()        { return this.protocol === Protocols.SHADOWSOCKS; }
+    get isHysteria2() { return this.protocol === Protocols.HYSTERIA2; }
+    get isTUIC()      { return this.protocol === Protocols.TUIC; }
+    get isAnyTLS()    { return this.protocol === Protocols.ANYTLS; }
+    get isShadowTLS() { return this.protocol === Protocols.SHADOWTLS; }
+    get isNaive()     { return this.protocol === Protocols.NAIVE; }
+    get isWG()        { return this.protocol === Protocols.WIREGUARD; }
+    get isSocks()     { return this.protocol === Protocols.SOCKS; }
+    get isHTTP()      { return this.protocol === Protocols.HTTP; }
+    get isMixed()     { return this.protocol === Protocols.MIXED; }
+    get isDirect()    { return this.protocol === Protocols.DIRECT; }
 
     get address() {
         let address = location.hostname;
@@ -116,11 +106,6 @@ class DBInbound {
             settings = JSON.parse(this.settings);
         }
 
-        let streamSettings = {};
-        if (!ObjectUtil.isEmpty(this.streamSettings)) {
-            streamSettings = JSON.parse(this.streamSettings);
-        }
-
         let sniffing = {};
         if (!ObjectUtil.isEmpty(this.sniffing)) {
             sniffing = JSON.parse(this.sniffing);
@@ -130,7 +115,6 @@ class DBInbound {
             listen: this.listen,
             protocol: this.protocol,
             settings: settings,
-            streamSettings: streamSettings,
             tag: this.tag,
             sniffing: sniffing,
         };
@@ -143,7 +127,13 @@ class DBInbound {
             case Protocols.VLESS:
             case Protocols.TROJAN:
             case Protocols.SHADOWSOCKS:
+            case Protocols.HYSTERIA2:
+            case Protocols.TUIC:
+            case Protocols.SOCKS:
+            case Protocols.HTTP:
                 return true;
+            // anytls / shadowtls / naive / wireguard / mixed / direct：
+            // 无标准 URL scheme，面板隐藏复制 / 二维码按钮。
             default:
                 return false;
         }
@@ -167,7 +157,7 @@ class AllSetting {
         this.tgBotToken = "";
         this.tgBotChatId = 0;
         this.tgRunTime = "";
-        this.xrayTemplateConfig = "";
+        this.coreTemplateConfig = "";
 
         this.timeLocation = "Asia/Shanghai";
 

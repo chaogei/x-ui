@@ -80,7 +80,7 @@ confirm() {
 }
 
 confirm_restart() {
-    confirm "是否重启面板，重启面板也会重启 xray" "y"
+    confirm "是否重启面板，重启面板也会重启 sing-box" "y"
     if [[ $? == 0 ]]; then
         restart
     else
@@ -94,7 +94,7 @@ before_show_menu() {
 }
 
 install() {
-    bash <(curl -Ls https://raw.githubusercontent.com/vaxilu/x-ui/master/install.sh)
+    bash <(curl -Ls https://raw.githubusercontent.com/chaogei/x-ui/master/install.sh)
     if [[ $? == 0 ]]; then
         if [[ $# == 0 ]]; then
             start
@@ -113,7 +113,7 @@ update() {
         fi
         return 0
     fi
-    bash <(curl -Ls https://raw.githubusercontent.com/vaxilu/x-ui/master/install.sh)
+    bash <(curl -Ls https://raw.githubusercontent.com/chaogei/x-ui/master/install.sh)
     if [[ $? == 0 ]]; then
         LOGI "更新完成，已自动重启面板 "
         exit 0
@@ -121,7 +121,7 @@ update() {
 }
 
 uninstall() {
-    confirm "确定要卸载面板吗,xray 也会卸载?" "n"
+    confirm "确定要卸载面板吗，sing-box 也会随之卸载?" "n"
     if [[ $? != 0 ]]; then
         if [[ $# == 0 ]]; then
             show_menu
@@ -223,7 +223,7 @@ stop() {
         sleep 2
         check_status
         if [[ $? == 1 ]]; then
-            LOGI "x-ui 与 xray 停止成功"
+            LOGI "x-ui 与 sing-box 停止成功"
         else
             LOGE "面板停止失败，可能是因为停止时间超过了两秒，请稍后查看日志信息"
         fi
@@ -239,7 +239,7 @@ restart() {
     sleep 2
     check_status
     if [[ $? == 0 ]]; then
-        LOGI "x-ui 与 xray 重启成功"
+        LOGI "x-ui 与 sing-box 重启成功"
     else
         LOGE "面板重启失败，可能是因为启动时间超过了两秒，请稍后查看日志信息"
     fi
@@ -288,11 +288,6 @@ show_log() {
     fi
 }
 
-migrate_v2_ui() {
-    /usr/local/x-ui/x-ui v2-ui
-
-    before_show_menu
-}
 
 install_bbr() {
     # temporary workaround for installing bbr
@@ -302,7 +297,7 @@ install_bbr() {
 }
 
 update_shell() {
-    wget -O /usr/bin/x-ui -N --no-check-certificate https://github.com/vaxilu/x-ui/raw/master/x-ui.sh
+    wget -O /usr/bin/x-ui -N --no-check-certificate https://github.com/chaogei/x-ui/raw/master/x-ui.sh
     if [[ $? != 0 ]]; then
         echo ""
         LOGE "下载脚本失败，请检查本机能否连接 Github"
@@ -378,7 +373,7 @@ show_status() {
         echo -e "面板状态: ${red}未安装${plain}"
         ;;
     esac
-    show_xray_status
+    show_core_status
 }
 
 show_enable_status() {
@@ -390,8 +385,8 @@ show_enable_status() {
     fi
 }
 
-check_xray_status() {
-    count=$(ps -ef | grep "xray-linux" | grep -v "grep" | wc -l)
+check_core_status() {
+    count=$(ps -ef | grep "sing-box-linux\|sing-box run" | grep -v "grep" | wc -l)
     if [[ count -ne 0 ]]; then
         return 0
     else
@@ -399,12 +394,12 @@ check_xray_status() {
     fi
 }
 
-show_xray_status() {
-    check_xray_status
+show_core_status() {
+    check_core_status
     if [[ $? == 0 ]]; then
-        echo -e "xray 状态: ${green}运行${plain}"
+        echo -e "sing-box 状态: ${green}运行${plain}"
     else
-        echo -e "xray 状态: ${red}未运行${plain}"
+        echo -e "sing-box 状态: ${red}未运行${plain}"
     fi
 }
 
@@ -494,7 +489,6 @@ show_usage() {
     echo "x-ui enable       - 设置 x-ui 开机自启"
     echo "x-ui disable      - 取消 x-ui 开机自启"
     echo "x-ui log          - 查看 x-ui 日志"
-    echo "x-ui v2-ui        - 迁移本机器的 v2-ui 账号数据至 x-ui"
     echo "x-ui update       - 更新 x-ui 面板"
     echo "x-ui install      - 安装 x-ui 面板"
     echo "x-ui uninstall    - 卸载 x-ui 面板"
@@ -610,9 +604,6 @@ if [[ $# > 0 ]]; then
         ;;
     "log")
         check_install 0 && show_log 0
-        ;;
-    "v2-ui")
-        check_install 0 && migrate_v2_ui 0
         ;;
     "update")
         check_install 0 && update 0

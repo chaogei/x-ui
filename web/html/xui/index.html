@@ -35,7 +35,7 @@
                                                     :stroke-color="status.mem.color"
                                                     :percent="status.mem.percent"></a-progress>
                                         <div>
-                                            内存: [[ sizeFormat(status.mem.current) ]] / [[ sizeFormat(status.mem.total) ]]
+                                            {{ i18n "memory" }}: [[ sizeFormat(status.mem.current) ]] / [[ sizeFormat(status.mem.total) ]]
                                         </div>
                                     </a-col>
                                 </a-row>
@@ -55,7 +55,7 @@
                                                     :stroke-color="status.disk.color"
                                                     :percent="status.disk.percent"></a-progress>
                                         <div>
-                                            硬盘: [[ sizeFormat(status.disk.current) ]] / [[ sizeFormat(status.disk.total) ]]
+                                            {{ i18n "disk" }}: [[ sizeFormat(status.disk.current) ]] / [[ sizeFormat(status.disk.total) ]]
                                         </div>
                                     </a-col>
                                 </a-row>
@@ -68,25 +68,25 @@
                 <a-row>
                     <a-col :sm="24" :md="12">
                         <a-card hoverable>
-                            xray 状态:
-                            <a-tag :color="status.xray.color">[[ status.xray.state ]]</a-tag>
-                            <a-tooltip v-if="status.xray.state === State.Error">
+                            {{ i18n "sing_box_status" }}:
+                            <a-tag :color="status.core.color">[[ status.core.state ]]</a-tag>
+                            <a-tooltip v-if="status.core.state === State.Error">
                                 <template slot="title">
-                                    <p v-for="line in status.xray.errorMsg.split('\n')">[[ line ]]</p>
+                                    <p v-for="line in status.core.errorMsg.split('\n')">[[ line ]]</p>
                                 </template>
                                 <a-icon type="question-circle" theme="filled"></a-icon>
                             </a-tooltip>
-                            <a-tag color="green" @click="openSelectV2rayVersion">[[ status.xray.version ]]</a-tag>
-                            <a-tag color="blue" @click="openSelectV2rayVersion">切换版本</a-tag>
+                            <a-tag color="green" @click="openSelectCoreVersion">[[ status.core.version ]]</a-tag>
+                            <a-tag color="blue" @click="openSelectCoreVersion">{{ i18n "switch_version" }}</a-tag>
                         </a-card>
                     </a-col>
                     <a-col :sm="24" :md="12">
                         <a-card hoverable>
-                            运行时间:
+                            {{ i18n "uptime" }}:
                             <a-tag color="#87d068">[[ formatSecond(status.uptime) ]]</a-tag>
                             <a-tooltip>
                                 <template slot="title">
-                                    系统自启动以来的运行时间
+                                    {{ i18n "uptime_hint" }}
                                 </template>
                                 <a-icon type="question-circle" theme="filled"></a-icon>
                             </a-tooltip>
@@ -94,15 +94,15 @@
                     </a-col>
                     <a-col :sm="24" :md="12">
                         <a-card hoverable>
-                            系统负载: [[ status.loads[0] ]] | [[ status.loads[1] ]] | [[ status.loads[2] ]]
+                            {{ i18n "loads" }}: [[ status.loads[0] ]] | [[ status.loads[1] ]] | [[ status.loads[2] ]]
                         </a-card>
                     </a-col>
                     <a-col :sm="24" :md="12">
                         <a-card hoverable>
-                            tcp / udp 连接数: [[ status.tcpCount ]] / [[ status.udpCount ]]
+                            {{ i18n "connections" }}: [[ status.tcpCount ]] / [[ status.udpCount ]]
                             <a-tooltip>
                                 <template slot="title">
-                                    所有网卡的总连接数
+                                    {{ i18n "tcp_udp_hint" }}
                                 </template>
                                 <a-icon type="question-circle" theme="filled"></a-icon>
                             </a-tooltip>
@@ -116,7 +116,7 @@
                                     [[ sizeFormat(status.netIO.up) ]] / S
                                     <a-tooltip>
                                         <template slot="title">
-                                            所有网卡的总上传速度
+                                            {{ i18n "net_io_up_hint" }}
                                         </template>
                                         <a-icon type="question-circle" theme="filled"></a-icon>
                                     </a-tooltip>
@@ -126,7 +126,7 @@
                                     [[ sizeFormat(status.netIO.down) ]] / S
                                     <a-tooltip>
                                         <template slot="title">
-                                            所有网卡的总下载速度
+                                            {{ i18n "net_io_down_hint" }}
                                         </template>
                                         <a-icon type="question-circle" theme="filled"></a-icon>
                                     </a-tooltip>
@@ -142,7 +142,7 @@
                                     [[ sizeFormat(status.netTraffic.sent) ]]
                                     <a-tooltip>
                                         <template slot="title">
-                                            系统启动以来所有网卡的总上传流量
+                                            {{ i18n "net_traffic_sent_hint" }}
                                         </template>
                                         <a-icon type="question-circle" theme="filled"></a-icon>
                                     </a-tooltip>
@@ -152,7 +152,7 @@
                                     [[ sizeFormat(status.netTraffic.recv) ]]
                                     <a-tooltip>
                                         <template slot="title">
-                                            系统启动以来所有网卡的总下载流量
+                                            {{ i18n "net_traffic_recv_hint" }}
                                         </template>
                                         <a-icon type="question-circle" theme="filled"></a-icon>
                                     </a-tooltip>
@@ -164,14 +164,14 @@
             </transition>
         </a-layout-content>
     </a-layout>
-    <a-modal id="version-modal" v-model="versionModal.visible" title="切换版本"
+    <a-modal id="version-modal" v-model="versionModal.visible" title='{{ i18n "switch_version" }}'
              :closable="true" @ok="() => versionModal.visible = false"
-             ok-text="确定" cancel-text="取消">
-        <h2>点击你想切换的版本</h2>
-        <h2>请谨慎选择，旧版本可能配置不兼容</h2>
+             ok-text='{{ i18n "confirm" }}' cancel-text='{{ i18n "cancel" }}'>
+        <h2>{{ i18n "switch_version_hint" }}</h2>
+        <h2>{{ i18n "switch_version_warn" }}</h2>
         <template v-for="version, index in versionModal.versions">
             <a-tag :color="index % 2 == 0 ? 'blue' : 'green'"
-                   style="margin: 10px" @click="switchV2rayVersion(version)">
+                   style="margin: 10px" @click="switchCoreVersion(version)">
                 [[ version ]]
             </a-tag>
         </template>
@@ -225,7 +225,7 @@
             this.tcpCount = 0;
             this.udpCount = 0;
             this.uptime = 0;
-            this.xray = {state: State.Stop, errorMsg: "", version: "", color: ""};
+            this.core = {state: State.Stop, errorMsg: "", version: "", color: ""};
 
             if (data == null) {
                 return;
@@ -240,19 +240,19 @@
             this.tcpCount = data.tcpCount;
             this.udpCount = data.udpCount;
             this.uptime = data.uptime;
-            this.xray = data.xray;
-            switch (this.xray.state) {
+            this.core = data.core;
+            switch (this.core.state) {
                 case State.Running:
-                    this.xray.color = "green";
+                    this.core.color = "green";
                     break;
                 case State.Stop:
-                    this.xray.color = "orange";
+                    this.core.color = "orange";
                     break;
                 case State.Error:
-                    this.xray.color = "red";
+                    this.core.color = "red";
                     break;
                 default:
-                    this.xray.color = "gray";
+                    this.core.color = "gray";
             }
         }
     }
@@ -277,10 +277,10 @@
             status: new Status(),
             versionModal,
             spinning: false,
-            loadingTip: '加载中',
+            loadingTip: '{{ i18n "loading" }}',
         },
         methods: {
-            loading(spinning, tip = '加载中') {
+            loading(spinning, tip = '{{ i18n "loading" }}') {
                 this.spinning = spinning;
                 this.loadingTip = tip;
             },
@@ -293,25 +293,25 @@
             setStatus(data) {
                 this.status = new Status(data);
             },
-            async openSelectV2rayVersion() {
+            async openSelectCoreVersion() {
                 this.loading(true);
-                const msg = await HttpUtil.post('server/getXrayVersion');
+                const msg = await HttpUtil.post('server/getCoreVersion');
                 this.loading(false);
                 if (!msg.success) {
                     return;
                 }
                 versionModal.show(msg.obj);
             },
-            switchV2rayVersion(version) {
+            switchCoreVersion(version) {
                 this.$confirm({
-                    title: '切换 xray 版本',
-                    content: '是否切换 xray 版本至' + ` ${version}?`,
-                    okText: '确定',
-                    cancelText: '取消',
+                    title: '{{ i18n "confirm_switch_core_title" }}',
+                    content: '{{ i18n "confirm_switch_core_content" }}' + ` ${version}?`,
+                    okText: '{{ i18n "confirm" }}',
+                    cancelText: '{{ i18n "cancel" }}',
                     onOk: async () => {
                         versionModal.hide();
-                        this.loading(true, '安装中，请不要刷新此页面');
-                        await HttpUtil.post(`/server/installXray/${version}`);
+                        this.loading(true, '{{ i18n "installing_core_tip" }}');
+                        await HttpUtil.post(`/server/installCore/${version}`);
                         this.loading(false);
                     },
                 });

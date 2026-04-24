@@ -1,0 +1,40 @@
+{{define "form/_tls"}}
+<!-- 通用 TLS 字段块（依赖 inbound.settings.tls 指向 TlsBlock 实例） -->
+<a-divider>TLS</a-divider>
+<a-form layout="inline">
+    <a-form-item label='{{ i18n "tls_enable" }}'>
+        <a-switch v-model="inbound.settings.tls.enabled"></a-switch>
+    </a-form-item>
+    <template v-if="inbound.settings.tls.enabled">
+        <a-form-item label='{{ i18n "tls_sni" }}'>
+            <a-input v-model.trim="inbound.settings.tls.server_name"></a-input>
+        </a-form-item>
+        <a-form-item label='{{ i18n "tls_alpn" }}'>
+            <a-input :value="inbound.settings.tls.alpn.join(',')"
+                     @change="e => inbound.settings.tls.alpn = (e.target.value||'').split(',').map(s=>s.trim()).filter(Boolean)"></a-input>
+        </a-form-item>
+        <a-form-item label='{{ i18n "tls_cert_source" }}'>
+            <a-radio-group v-model="inbound.settings.tls.useFile" button-style="solid">
+                <a-radio-button :value="true">{{ i18n "tls_source_file" }}</a-radio-button>
+                <a-radio-button :value="false">{{ i18n "tls_source_content" }}</a-radio-button>
+            </a-radio-group>
+        </a-form-item>
+        <template v-if="inbound.settings.tls.useFile">
+            <a-form-item label='{{ i18n "tls_cert_path" }}'>
+                <a-input v-model.trim="inbound.settings.tls.certificate_path"></a-input>
+            </a-form-item>
+            <a-form-item label='{{ i18n "tls_key_path" }}'>
+                <a-input v-model.trim="inbound.settings.tls.key_path"></a-input>
+            </a-form-item>
+        </template>
+        <template v-else>
+            <a-form-item label='{{ i18n "tls_cert_content" }}'>
+                <a-input type="textarea" :rows="2" v-model="inbound.settings.tls.certificate"></a-input>
+            </a-form-item>
+            <a-form-item label='{{ i18n "tls_key_content" }}'>
+                <a-input type="textarea" :rows="2" v-model="inbound.settings.tls.key"></a-input>
+            </a-form-item>
+        </template>
+    </template>
+</a-form>
+{{end}}

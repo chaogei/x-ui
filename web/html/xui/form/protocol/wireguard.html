@@ -1,0 +1,40 @@
+{{define "form/protocol/wireguard"}}
+<a-form layout="inline">
+    <a-form-item label='{{ i18n "proto_system_iface" }}'>
+        <a-switch v-model="inbound.settings.system"></a-switch>
+    </a-form-item>
+    <a-form-item label="MTU">
+        <a-input type="number" v-model.number="inbound.settings.mtu"></a-input>
+    </a-form-item>
+    <a-form-item label='{{ i18n "proto_local_address" }}'>
+        <a-input :value="inbound.settings.address.join(',')"
+                 @change="e => inbound.settings.address = (e.target.value||'').split(',').map(s=>s.trim()).filter(Boolean)"
+                 placeholder='{{ i18n "proto_local_address_ph" }}'></a-input>
+    </a-form-item>
+    <a-form-item label="private_key">
+        <a-input v-model.trim="inbound.settings.private_key"></a-input>
+    </a-form-item>
+</a-form>
+<a-divider>{{ i18n "proto_peer" }}</a-divider>
+<a-form layout="inline">
+    <a-form-item label='{{ i18n "proto_peer_address" }}'>
+        <a-input v-model.trim="inbound.settings.peers[0].address"></a-input>
+    </a-form-item>
+    <a-form-item label='{{ i18n "proto_peer_port" }}'>
+        <a-input type="number" v-model.number="inbound.settings.peers[0].port"></a-input>
+    </a-form-item>
+    <a-form-item label="public_key">
+        <a-input v-model.trim="inbound.settings.peers[0].public_key"></a-input>
+    </a-form-item>
+    <a-form-item label="pre_shared_key">
+        <a-input v-model.trim="inbound.settings.peers[0].pre_shared_key"></a-input>
+    </a-form-item>
+    <a-form-item label='{{ i18n "proto_allowed_ips" }}'>
+        <a-input :value="inbound.settings.peers[0].allowed_ips.join(',')"
+                 @change="e => inbound.settings.peers[0].allowed_ips = (e.target.value||'').split(',').map(s=>s.trim()).filter(Boolean)"></a-input>
+    </a-form-item>
+    <a-form-item label="persistent_keepalive">
+        <a-input type="number" v-model.number="inbound.settings.peers[0].persistent_keepalive_interval"></a-input>
+    </a-form-item>
+</a-form>
+{{end}}

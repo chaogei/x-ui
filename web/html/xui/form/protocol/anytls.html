@@ -1,0 +1,16 @@
+{{define "form/protocol/anytls"}}
+<a-form layout="inline">
+    <a-form-item label='{{ i18n "proto_username" }}'>
+        <a-input v-model.trim="inbound.settings.users[0].name"></a-input>
+    </a-form-item>
+    <a-form-item label='{{ i18n "proto_password" }}'>
+        <a-input v-model.trim="inbound.settings.users[0].password"></a-input>
+    </a-form-item>
+    <a-form-item label='{{ i18n "proto_padding" }}'>
+        <a-input :value="(inbound.settings.padding_scheme||[]).join(',')"
+                 @change="e => inbound.settings.padding_scheme = (e.target.value||'').split(',').map(s=>s.trim()).filter(Boolean)"
+                 placeholder='{{ i18n "proto_padding_ph" }}'></a-input>
+    </a-form-item>
+</a-form>
+{{template "form/_tls"}}
+{{end}}

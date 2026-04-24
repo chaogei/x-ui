@@ -23,7 +23,7 @@ const (
 
 type StatsNotifyJob struct {
 	enable         bool
-	xrayService    service.XrayService
+	coreService    service.CoreService
 	inboundService service.InboundService
 	settingService service.SettingService
 }
@@ -59,7 +59,7 @@ func (j *StatsNotifyJob) SendMsgToTgbot(msg string) {
 
 //Here run is a interface method of Job interface
 func (j *StatsNotifyJob) Run() {
-	if !j.xrayService.IsXrayRunning() {
+	if !j.coreService.IsCoreRunning() {
 		return
 	}
 	var info string

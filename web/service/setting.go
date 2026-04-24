@@ -18,10 +18,10 @@ import (
 )
 
 //go:embed config.json
-var xrayTemplateConfig string
+var coreTemplateConfig string
 
 var defaultValueMap = map[string]string{
-	"xrayTemplateConfig": xrayTemplateConfig,
+	"coreTemplateConfig": coreTemplateConfig,
 	"webListen":          "",
 	"webPort":            "54321",
 	"webCertFile":        "",
@@ -186,8 +186,9 @@ func (s *SettingService) setInt(key string, value int) error {
 	return s.setString(key, strconv.Itoa(value))
 }
 
-func (s *SettingService) GetXrayConfigTemplate() (string, error) {
-	return s.getString("xrayTemplateConfig")
+// GetCoreTemplateConfig 返回面板设置中保存的 sing-box 配置模板 JSON。
+func (s *SettingService) GetCoreTemplateConfig() (string, error) {
+	return s.getString("coreTemplateConfig")
 }
 
 func (s *SettingService) GetListen() (string, error) {

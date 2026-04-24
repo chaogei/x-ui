@@ -10,14 +10,14 @@
         title: '',
         visible: false,
         confirmLoading: false,
-        okText: '确定',
+        okText: '{{ i18n "confirm" }}',
         confirm: null,
         inbound: new Inbound(),
         dbInbound: new DBInbound(),
         ok() {
             ObjectUtil.execute(inModal.confirm, inModal.inbound, inModal.dbInbound);
         },
-        show({ title='', okText='确定', inbound=null, dbInbound=null, confirm=(inbound, dbInbound)=>{} }) {
+        show({ title='', okText='{{ i18n "confirm" }}', inbound=null, dbInbound=null, confirm=(inbound, dbInbound)=>{} }) {
             this.title = title;
             this.okText = okText;
             if (inbound) {
@@ -42,14 +42,22 @@
         },
     };
 
+    // 面板可创建的入站协议。顺序决定下拉框展示顺序，常用协议置顶.
     const protocols = {
         VMESS: Protocols.VMESS,
         VLESS: Protocols.VLESS,
         TROJAN: Protocols.TROJAN,
         SHADOWSOCKS: Protocols.SHADOWSOCKS,
-        DOKODEMO: Protocols.DOKODEMO,
+        HYSTERIA2: Protocols.HYSTERIA2,
+        TUIC: Protocols.TUIC,
+        ANYTLS: Protocols.ANYTLS,
+        SHADOWTLS: Protocols.SHADOWTLS,
+        NAIVE: Protocols.NAIVE,
+        WIREGUARD: Protocols.WIREGUARD,
         SOCKS: Protocols.SOCKS,
         HTTP: Protocols.HTTP,
+        MIXED: Protocols.MIXED,
+        DIRECT: Protocols.DIRECT,
     };
 
     new Vue({
@@ -66,13 +74,6 @@
                 return inModal.dbInbound;
             }
         },
-        methods: {
-            streamNetworkChange(oldValue) {
-                if (oldValue === 'kcp') {
-                    this.inModal.inbound.tls = false;
-                }
-            }
-        }
     });
 
 </script>

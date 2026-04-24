@@ -1,64 +1,37 @@
 {
-  "api": {
-    "services": [
-      "HandlerService",
-      "LoggerService",
-      "StatsService"
+  "log": {
+    "level": "info",
+    "timestamp": true
+  },
+  "dns": {
+    "servers": [
+      { "tag": "google", "address": "tls://8.8.8.8" },
+      { "tag": "local", "address": "local", "detour": "direct" }
     ],
-    "tag": "api"
+    "strategy": "prefer_ipv4"
   },
-  "inbounds": [
-    {
-      "listen": "127.0.0.1",
-      "port": 62789,
-      "protocol": "dokodemo-door",
-      "settings": {
-        "address": "127.0.0.1"
-      },
-      "tag": "api"
-    }
-  ],
+  "inbounds": [],
   "outbounds": [
-    {
-      "protocol": "freedom",
-      "settings": {}
-    },
-    {
-      "protocol": "blackhole",
-      "settings": {},
-      "tag": "blocked"
-    }
+    { "type": "direct", "tag": "direct" },
+    { "type": "block", "tag": "block" },
+    { "type": "dns", "tag": "dns-out" }
   ],
-  "policy": {
-    "system": {
-      "statsInboundDownlink": true,
-      "statsInboundUplink": true
-    }
-  },
-  "routing": {
+  "route": {
     "rules": [
-      {
-        "inboundTag": [
-          "api"
-        ],
-        "outboundTag": "api",
-        "type": "field"
-      },
-      {
-        "ip": [
-          "geoip:private"
-        ],
-        "outboundTag": "blocked",
-        "type": "field"
-      },
-      {
-        "outboundTag": "blocked",
-        "protocol": [
-          "bittorrent"
-        ],
-        "type": "field"
-      }
-    ]
+      { "protocol": "dns", "outbound": "dns-out" },
+      { "ip_is_private": true, "outbound": "direct" },
+      { "protocol": "bittorrent", "outbound": "block" }
+    ],
+    "final": "direct",
+    "auto_detect_interface": true
   },
-  "stats": {}
+  "experimental": {
+    "v2ray_api": {
+      "listen": "127.0.0.1:62789",
+      "stats": {
+        "enabled": true,
+        "inbounds": []
+      }
+    }
+  }
 }

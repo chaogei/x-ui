@@ -33,8 +33,8 @@ func (a *ServerController) initRouter(g *gin.RouterGroup) {
 
 	g.Use(a.checkLogin)
 	g.POST("/status", a.status)
-	g.POST("/getXrayVersion", a.getXrayVersion)
-	g.POST("/installXray/:version", a.installXray)
+	g.POST("/getCoreVersion", a.getCoreVersion)
+	g.POST("/installCore/:version", a.installCore)
 }
 
 func (a *ServerController) refreshStatus() {
@@ -59,14 +59,14 @@ func (a *ServerController) status(c *gin.Context) {
 	jsonObj(c, a.lastStatus, nil)
 }
 
-func (a *ServerController) getXrayVersion(c *gin.Context) {
+func (a *ServerController) getCoreVersion(c *gin.Context) {
 	now := time.Now()
 	if now.Sub(a.lastGetVersionsTime) <= time.Minute {
 		jsonObj(c, a.lastVersions, nil)
 		return
 	}
 
-	versions, err := a.serverService.GetXrayVersions()
+	versions, err := a.serverService.GetCoreVersions()
 	if err != nil {
 		jsonMsg(c, "获取版本", err)
 		return
@@ -78,8 +78,8 @@ func (a *ServerController) getXrayVersion(c *gin.Context) {
 	jsonObj(c, versions, nil)
 }
 
-func (a *ServerController) installXray(c *gin.Context) {
+func (a *ServerController) installCore(c *gin.Context) {
 	version := c.Param("version")
-	err := a.serverService.UpdateXray(version)
-	jsonMsg(c, "安装 xray", err)
+	err := a.serverService.UpdateCore(version)
+	jsonMsg(c, "安装 sing-box", err)
 }

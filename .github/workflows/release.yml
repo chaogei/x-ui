@@ -2,146 +2,108 @@ name: Release X-ui
 on:
   push:
     tags:
-      - 0.*
+      - 'v*'
+      - '1.*'
   workflow_dispatch:
 
+env:
+  SINGBOX_VERSION: "1.11.0"
+  GO_VERSION: "1.22"
+  # 构建标志：
+  #  -trimpath      去除本地路径信息，便于复现构建
+  #  -s -w          去除符号表与 DWARF 调试信息，减小二进制体积
+  #  -buildid=      清空 buildid，保证可复现
+  BUILD_FLAGS: "-trimpath"
+  LD_FLAGS: "-s -w -buildid="
+
 jobs:
-  release:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: amd64
+            goarch: amd64
+            cc: ""
+            apt: ""
+          - arch: arm64
+            goarch: arm64
+            cc: "aarch64-linux-gnu-gcc"
+            apt: "gcc-aarch64-linux-gnu"
+          - arch: s390x
+            goarch: s390x
+            cc: "s390x-linux-gnu-gcc"
+            apt: "gcc-s390x-linux-gnu"
+    name: build x-ui ${{ matrix.arch }}
     runs-on: ubuntu-latest
-    outputs:
-      upload_url: ${{ steps.create_release.outputs.upload_url }}
     steps:
-      - name: Create Release
-        id: create_release
-        uses: actions/create-release@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GAYHUB_TOKEN }}
+      - uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
         with:
-          tag_name: ${{ github.ref }}
-          release_name: ${{ github.ref }}
+          go-version: ${{ env.GO_VERSION }}
+
+      - name: Install cross-compile toolchain
+        if: matrix.apt != ''
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ${{ matrix.apt }}
+
+      - name: Build x-ui
+        run: |
+          set -euo pipefail
+          export CGO_ENABLED=1
+          export GOOS=linux
+          export GOARCH=${{ matrix.goarch }}
+          if [ -n "${{ matrix.cc }}" ]; then
+            export CC=${{ matrix.cc }}
+          fi
+          go build ${BUILD_FLAGS} -ldflags="${LD_FLAGS}" -o xui-release -v main.go
+
+      - name: Package release tarball
+        run: |
+          set -euo pipefail
+          mkdir x-ui
+          mv xui-release x-ui/x-ui
+          cp x-ui.service x-ui/x-ui.service
+          cp x-ui.sh x-ui/x-ui.sh
+          mkdir x-ui/bin
+          SB_FILE="sing-box-${SINGBOX_VERSION}-linux-${{ matrix.arch }}"
+          wget -q "https://github.com/SagerNet/sing-box/releases/download/v${SINGBOX_VERSION}/${SB_FILE}.tar.gz"
+          tar -xzf "${SB_FILE}.tar.gz"
+          mv "${SB_FILE}/sing-box" "x-ui/bin/sing-box-linux-${{ matrix.arch }}"
+          chmod +x "x-ui/bin/sing-box-linux-${{ matrix.arch }}" x-ui/x-ui x-ui/x-ui.sh
+          rm -rf "${SB_FILE}" "${SB_FILE}.tar.gz"
+          tar -zcvf "x-ui-linux-${{ matrix.arch }}.tar.gz" x-ui
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: x-ui-linux-${{ matrix.arch }}
+          path: x-ui-linux-${{ matrix.arch }}.tar.gz
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    name: Publish GitHub Release
+    needs: build
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ github.ref_name }}
+          name: ${{ github.ref_name }}
           draft: true
           prerelease: true
-  linuxamd64build:
-    name: build x-ui amd64 version
-    needs: release
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Set up Go
-        uses: actions/setup-go@v2
-        with:
-          go-version: 1.18
-      - name: build linux amd64 version
-        run: |
-          CGO_ENABLED=1 GOOS=linux GOARCH=amd64 go build -o xui-release -v main.go
-          mkdir x-ui
-          cp xui-release x-ui/xui-release
-          cp x-ui.service x-ui/x-ui.service
-          cp x-ui.sh x-ui/x-ui.sh
-          cd x-ui
-          mv xui-release x-ui
-          mkdir bin
-          cd bin
-          wget https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip
-          unzip Xray-linux-64.zip
-          rm -f Xray-linux-64.zip geoip.dat geosite.dat
-          wget https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat
-          wget https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat
-          mv xray xray-linux-amd64
-          cd ..
-          cd ..
-      - name: package
-        run: tar -zcvf x-ui-linux-amd64.tar.gz x-ui
-      - name: upload
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GAYHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.release.outputs.upload_url }}
-          asset_path: x-ui-linux-amd64.tar.gz
-          asset_name: x-ui-linux-amd64.tar.gz
-          asset_content_type: application/gzip
-  linuxarm64build:
-    name: build x-ui arm64 version
-    needs: release
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Set up Go
-        uses: actions/setup-go@v2
-        with:
-          go-version: 1.18
-      - name: build linux arm64 version
-        run: |
-          sudo apt-get update
-          sudo apt install gcc-aarch64-linux-gnu
-          CGO_ENABLED=1 GOOS=linux GOARCH=arm64 CC=aarch64-linux-gnu-gcc go build -o xui-release -v main.go
-          mkdir x-ui
-          cp xui-release x-ui/xui-release
-          cp x-ui.service x-ui/x-ui.service
-          cp x-ui.sh x-ui/x-ui.sh
-          cd x-ui
-          mv xui-release x-ui
-          mkdir bin
-          cd bin
-          wget https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-arm64-v8a.zip
-          unzip Xray-linux-arm64-v8a.zip
-          rm -f Xray-linux-arm64-v8a.zip geoip.dat geosite.dat
-          wget https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat
-          wget https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat
-          mv xray xray-linux-arm64
-          cd ..
-          cd ..
-      - name: package
-        run: tar -zcvf x-ui-linux-arm64.tar.gz x-ui
-      - name: upload
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GAYHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.release.outputs.upload_url }}
-          asset_path: x-ui-linux-arm64.tar.gz
-          asset_name: x-ui-linux-arm64.tar.gz
-          asset_content_type: application/gzip
-  linuxs390xbuild:
-    name: build x-ui s390x version
-    needs: release
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v2
-      - name: Set up Go
-        uses: actions/setup-go@v2
-        with:
-          go-version: 1.18
-      - name: build linux s390x version
-        run: |
-          sudo apt-get update
-          sudo apt install gcc-s390x-linux-gnu -y
-          CGO_ENABLED=1 GOOS=linux GOARCH=s390x CC=s390x-linux-gnu-gcc go build -o xui-release -v main.go
-          mkdir x-ui
-          cp xui-release x-ui/xui-release
-          cp x-ui.service x-ui/x-ui.service
-          cp x-ui.sh x-ui/x-ui.sh
-          cd x-ui
-          mv xui-release x-ui
-          mkdir bin
-          cd bin
-          wget https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-s390x.zip
-          unzip Xray-linux-s390x.zip
-          rm -f Xray-linux-s390x.zip geoip.dat geosite.dat
-          wget https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat
-          wget https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat
-          mv xray xray-linux-s390x
-          cd ..
-          cd ..
-      - name: package
-        run: tar -zcvf x-ui-linux-s390x.tar.gz x-ui
-      - name: upload
-        uses: actions/upload-release-asset@v1
-        env:
-          GITHUB_TOKEN: ${{ secrets.GAYHUB_TOKEN }}
-        with:
-          upload_url: ${{ needs.release.outputs.upload_url }}
-          asset_path: x-ui-linux-s390x.tar.gz
-          asset_name: x-ui-linux-s390x.tar.gz
-          asset_content_type: application/gzip
+          files: dist/*.tar.gz
+          fail_on_unmatched_files: true

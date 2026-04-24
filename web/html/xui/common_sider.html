@@ -1,15 +1,15 @@
 {{define "menuItems"}}
 <a-menu-item key="{{ .base_path }}xui/">
     <a-icon type="dashboard"></a-icon>
-    <span>系统状态</span>
+    <span>{{ i18n "menu_system_status" }}</span>
 </a-menu-item>
 <a-menu-item key="{{ .base_path }}xui/inbounds">
     <a-icon type="user"></a-icon>
-    <span>入站列表</span>
+    <span>{{ i18n "menu_inbound_list" }}</span>
 </a-menu-item>
 <a-menu-item key="{{ .base_path }}xui/setting">
     <a-icon type="setting"></a-icon>
-    <span>面板设置</span>
+    <span>{{ i18n "menu_panel_setting" }}</span>
 </a-menu-item>
 <!--<a-menu-item key="{{ .base_path }}xui/clients">-->
 <!--    <a-icon type="laptop"></a-icon>-->
@@ -18,16 +18,16 @@
 <a-sub-menu>
     <template slot="title">
         <a-icon type="link"></a-icon>
-        <span>其他</span>
+        <span>{{ i18n "menu_others" }}</span>
     </template>
-    <a-menu-item key="https://github.com/vaxilu/x-ui/">
+    <a-menu-item key="https://github.com/chaogei/x-ui/">
         <a-icon type="github"></a-icon>
         <span>Github</span>
     </a-menu-item>
 </a-sub-menu>
 <a-menu-item key="{{ .base_path }}logout">
     <a-icon type="logout"></a-icon>
-    <span>退出登录</span>
+    <span>{{ i18n "logout" }}</span>
 </a-menu-item>
 {{end}}
 

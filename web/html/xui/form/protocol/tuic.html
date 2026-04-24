@@ -1,0 +1,27 @@
+{{define "form/protocol/tuic"}}
+<a-form layout="inline">
+    <a-form-item label="UUID">
+        <a-input v-model.trim="inbound.settings.users[0].uuid"></a-input>
+    </a-form-item>
+    <a-form-item label='{{ i18n "proto_password" }}'>
+        <a-input v-model.trim="inbound.settings.users[0].password"></a-input>
+    </a-form-item>
+    <a-form-item label='{{ i18n "proto_congestion" }}'>
+        <a-select v-model="inbound.settings.congestion_control" style="width: 120px;">
+            <a-select-option value="cubic">cubic</a-select-option>
+            <a-select-option value="new_reno">new_reno</a-select-option>
+            <a-select-option value="bbr">bbr</a-select-option>
+        </a-select>
+    </a-form-item>
+    <a-form-item label="auth_timeout">
+        <a-input v-model.trim="inbound.settings.auth_timeout" placeholder='{{ i18n "proto_auth_timeout_ph" }}'></a-input>
+    </a-form-item>
+    <a-form-item label="0-RTT">
+        <a-switch v-model="inbound.settings.zero_rtt_handshake"></a-switch>
+    </a-form-item>
+    <a-form-item label="heartbeat">
+        <a-input v-model.trim="inbound.settings.heartbeat" placeholder='{{ i18n "proto_heartbeat_ph" }}'></a-input>
+    </a-form-item>
+</a-form>
+{{template "form/_tls"}}
+{{end}}

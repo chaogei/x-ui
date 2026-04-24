@@ -1,49 +1,43 @@
-{{define "form/vless"}}
+{{define "form/protocol/vless"}}
 <a-form layout="inline">
-    <a-form-item label="id">
-        <a-input v-model.trim="inbound.settings.vlesses[0].id"></a-input>
+    <a-form-item label="UUID">
+        <a-input v-model.trim="inbound.settings.users[0].uuid"></a-input>
     </a-form-item>
-    <a-form-item v-if="inbound.xtls" label="flow">
-        <a-select v-model="inbound.settings.vlesses[0].flow" style="width: 150px">
-            <a-select-option value="">无</a-select-option>
-            <a-select-option v-for="key in FLOW_CONTROL" :value="key">[[ key ]]</a-select-option>
+    <a-form-item label="flow">
+        <a-select v-model="inbound.settings.users[0].flow" style="width: 200px">
+            <a-select-option value="">{{ i18n "transport_none" }}</a-select-option>
+            <a-select-option value="xtls-rprx-vision">xtls-rprx-vision</a-select-option>
         </a-select>
     </a-form-item>
-</a-form>
-
-<a-form layout="inline">
-    <a-form-item label="fallbacks">
-        <a-row>
-            <a-button type="primary" size="small"
-                      @click="inbound.settings.addFallback()">
-                +
-            </a-button>
-        </a-row>
+    <a-form-item label='{{ i18n "proto_name_opt" }}'>
+        <a-input v-model.trim="inbound.settings.users[0].name"></a-input>
     </a-form-item>
 </a-form>
-
-<!-- vless fallbacks -->
-<a-form v-for="(fallback, index) in inbound.settings.fallbacks" layout="inline">
-    <a-divider>
-        fallback[[ index + 1 ]]
-        <a-icon type="delete" @click="() => inbound.settings.delFallback(index)"
-                style="color: rgb(255, 77, 79);cursor: pointer;"/>
-    </a-divider>
-    <a-form-item label="name">
-        <a-input v-model="fallback.name"></a-input>
-    </a-form-item>
-    <a-form-item label="alpn">
-        <a-input v-model="fallback.alpn"></a-input>
-    </a-form-item>
-    <a-form-item label="path">
-        <a-input v-model="fallback.path"></a-input>
-    </a-form-item>
-    <a-form-item label="dest">
-        <a-input v-model="fallback.dest"></a-input>
-    </a-form-item>
-    <a-form-item label="xver">
-        <a-input type="number" v-model.number="fallback.xver"></a-input>
-    </a-form-item>
-    <a-divider v-if="inbound.settings.fallbacks.length - 1 === index"/>
-</a-form>
+{{template "form/_tls"}}
+<!-- VLESS 独有的 Reality 子块 -->
+<template v-if="inbound.settings.tls.enabled">
+    <a-divider>Reality</a-divider>
+    <a-form layout="inline">
+        <a-form-item label='{{ i18n "proto_reality_enable" }}'>
+            <a-switch :checked="!!(inbound.settings.tls.reality && inbound.settings.tls.reality.enabled)"
+                      @change="v => { if(!inbound.settings.tls.reality){ inbound.settings.tls.reality = new RealityBlock(); } inbound.settings.tls.reality.enabled = v; }"></a-switch>
+        </a-form-item>
+        <template v-if="inbound.settings.tls.reality && inbound.settings.tls.reality.enabled">
+            <a-form-item label="handshake server">
+                <a-input v-model.trim="inbound.settings.tls.reality.handshake_server" placeholder='{{ i18n "proto_reality_sni_ph" }}'></a-input>
+            </a-form-item>
+            <a-form-item label="handshake port">
+                <a-input type="number" v-model.number="inbound.settings.tls.reality.handshake_port"></a-input>
+            </a-form-item>
+            <a-form-item label="private_key">
+                <a-input v-model.trim="inbound.settings.tls.reality.private_key"></a-input>
+            </a-form-item>
+            <a-form-item label='{{ i18n "proto_short_id" }}'>
+                <a-input :value="inbound.settings.tls.reality.short_id.join(',')"
+                         @change="e => inbound.settings.tls.reality.short_id = (e.target.value||'').split(',').map(s=>s.trim())"></a-input>
+            </a-form-item>
+        </template>
+    </a-form>
+</template>
+{{template "form/_transport"}}
 {{end}}

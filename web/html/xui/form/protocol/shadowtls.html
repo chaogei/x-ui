@@ -1,0 +1,26 @@
+{{define "form/protocol/shadowtls"}}
+<a-form layout="inline">
+    <a-form-item label='{{ i18n "proto_version" }}'>
+        <a-select v-model.number="inbound.settings.version" style="width: 80px;">
+            <a-select-option :value="1">1</a-select-option>
+            <a-select-option :value="2">2</a-select-option>
+            <a-select-option :value="3">3</a-select-option>
+        </a-select>
+    </a-form-item>
+    <a-form-item label='{{ i18n "proto_username_v" }}'>
+        <a-input v-model.trim="inbound.settings.users[0].name"></a-input>
+    </a-form-item>
+    <a-form-item label='{{ i18n "proto_password" }}'>
+        <a-input v-model.trim="inbound.settings.users[0].password"></a-input>
+    </a-form-item>
+    <a-form-item label='{{ i18n "proto_handshake_server" }}'>
+        <a-input v-model.trim="inbound.settings.handshake.server"></a-input>
+    </a-form-item>
+    <a-form-item label='{{ i18n "proto_handshake_port" }}'>
+        <a-input type="number" v-model.number="inbound.settings.handshake.server_port"></a-input>
+    </a-form-item>
+    <a-form-item label="strict_mode">
+        <a-switch v-model="inbound.settings.strict_mode"></a-switch>
+    </a-form-item>
+</a-form>
+{{end}}

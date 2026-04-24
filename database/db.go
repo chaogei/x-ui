@@ -34,7 +34,16 @@ func initUser() error {
 }
 
 func initInbound() error {
-	return db.AutoMigrate(&model.Inbound{})
+	// 旧 Xray schema 与 sing-box schema 完全不兼容，
+	// 先做一次性重命名备份（若检测到），再由 AutoMigrate 建新表。
+	if err := migrateFromXraySchema(db); err != nil {
+		return err
+	}
+	if err := db.AutoMigrate(&model.Inbound{}); err != nil {
+		return err
+	}
+	// 清理历史遗留列 / 索引（stream_settings、port 的 unique 索引等）。
+	return dropLegacyColumns(db)
 }
 
 func initSetting() error {

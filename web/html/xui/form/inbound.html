@@ -1,5 +1,5 @@
 {{define "form/inbound"}}
-<!-- base -->
+<!-- 入站基础信息：协议、监听、端口、限额、到期 -->
 <a-form layout="inline">
     <a-form-item label='{{ i18n "remark" }}'>
         <a-input v-model.trim="dbInbound.remark"></a-input>
@@ -8,32 +8,27 @@
         <a-switch v-model="dbInbound.enable"></a-switch>
     </a-form-item>
     <a-form-item label='{{ i18n "protocol" }}'>
-        <a-select v-model="inbound.protocol" style="width: 160px;">
+        <a-select v-model="inbound.protocol" style="width: 180px;">
             <a-select-option v-for="p in Protocols" :key="p" :value="p">[[ p ]]</a-select-option>
         </a-select>
     </a-form-item>
     <a-form-item>
         <span slot="label">
-            监听 IP
+            {{ i18n "form_listen" }}
             <a-tooltip>
-                <template slot="title">
-                    默认留空即可
-                </template>
+                <template slot="title">{{ i18n "form_listen_desc" }}</template>
                 <a-icon type="question-circle" theme="filled"></a-icon>
             </a-tooltip>
         </span>
         <a-input v-model.trim="inbound.listen"></a-input>
     </a-form-item>
-    <a-form-item label="端口">
+    <a-form-item label='{{ i18n "port" }}'>
         <a-input type="number" v-model.number="inbound.port"></a-input>
     </a-form-item>
     <a-form-item>
         <span slot="label">
-            总流量(GB)
-            <a-tooltip>
-                <template slot="title">
-                    0 表示不限制
-                </template>
+            {{ i18n "form_total_gb" }}
+            <a-tooltip><template slot="title">{{ i18n "form_total_gb_desc" }}</template>
                 <a-icon type="question-circle" theme="filled"></a-icon>
             </a-tooltip>
         </span>
@@ -41,11 +36,8 @@
     </a-form-item>
     <a-form-item>
         <span slot="label">
-            到期时间
-            <a-tooltip>
-                <template slot="title">
-                    留空则永不到期
-                </template>
+            {{ i18n "expiry_time" }}
+            <a-tooltip><template slot="title">{{ i18n "form_expiry_time_desc" }}</template>
                 <a-icon type="question-circle" theme="filled"></a-icon>
             </a-tooltip>
         </span>
@@ -54,53 +46,24 @@
     </a-form-item>
 </a-form>
 
-<!-- vmess settings -->
-<template v-if="inbound.protocol === Protocols.VMESS">
-    {{template "form/vmess"}}
-</template>
+<!-- 协议分支：按 sing-box inbound type 加载对应子表单 -->
+<template v-if="inbound.protocol === Protocols.VMESS">      {{template "form/protocol/vmess"}}      </template>
+<template v-if="inbound.protocol === Protocols.VLESS">      {{template "form/protocol/vless"}}      </template>
+<template v-if="inbound.protocol === Protocols.TROJAN">     {{template "form/protocol/trojan"}}     </template>
+<template v-if="inbound.protocol === Protocols.SHADOWSOCKS">{{template "form/protocol/shadowsocks"}}</template>
+<template v-if="inbound.protocol === Protocols.HYSTERIA2">  {{template "form/protocol/hysteria2"}}  </template>
+<template v-if="inbound.protocol === Protocols.TUIC">       {{template "form/protocol/tuic"}}       </template>
+<template v-if="inbound.protocol === Protocols.ANYTLS">     {{template "form/protocol/anytls"}}     </template>
+<template v-if="inbound.protocol === Protocols.SHADOWTLS">  {{template "form/protocol/shadowtls"}}  </template>
+<template v-if="inbound.protocol === Protocols.NAIVE">      {{template "form/protocol/naive"}}      </template>
+<template v-if="inbound.protocol === Protocols.WIREGUARD">  {{template "form/protocol/wireguard"}}  </template>
+<template v-if="inbound.protocol === Protocols.SOCKS">      {{template "form/protocol/socks"}}      </template>
+<template v-if="inbound.protocol === Protocols.HTTP">       {{template "form/protocol/http"}}       </template>
+<template v-if="inbound.protocol === Protocols.MIXED">      {{template "form/protocol/mixed"}}      </template>
+<template v-if="inbound.protocol === Protocols.DIRECT">     {{template "form/protocol/direct"}}     </template>
 
-<!-- vless settings -->
-<template v-if="inbound.protocol === Protocols.VLESS">
-    {{template "form/vless"}}
-</template>
-
-<!-- trojan settings -->
-<template v-if="inbound.protocol === Protocols.TROJAN">
-    {{template "form/trojan"}}
-</template>
-
-<!-- shadowsocks -->
-<template v-if="inbound.protocol === Protocols.SHADOWSOCKS">
-    {{template "form/shadowsocks"}}
-</template>
-
-<!-- dokodemo-door -->
-<template v-if="inbound.protocol === Protocols.DOKODEMO">
-    {{template "form/dokodemo"}}
-</template>
-
-<!-- socks -->
-<template v-if="inbound.protocol === Protocols.SOCKS">
-    {{template "form/socks"}}
-</template>
-
-<!-- http -->
-<template v-if="inbound.protocol === Protocols.HTTP">
-    {{template "form/http"}}
-</template>
-
-<!-- stream settings -->
-<template v-if="inbound.canEnableStream()">
-    {{template "form/streamSettings"}}
-</template>
-
-<!-- tls settings -->
-<template v-if="inbound.canEnableTls()">
-    {{template "form/tlsSettings"}}
-</template>
-
-<!-- sniffing -->
-<template v-if="inbound.canSniffing()">
+<!-- sniffing 仅对代理类 TCP 协议有意义 -->
+<template v-if="inbound.canSniff">
     {{template "form/sniffing"}}
 </template>
 {{end}}

@@ -1,16 +1,29 @@
 {{define "form/sniffing"}}
+<!-- sing-box 的 sniff 是 inbound 顶层字段，不再嵌套在 sniffing 对象里 -->
 <a-form layout="inline">
-  <a-form-item>
-            <span slot="label">
-                sniffing
-                <a-tooltip>
-                    <template slot="title">
-                        没有特殊需求保持默认即可
-                    </template>
-                    <a-icon type="question-circle" theme="filled"></a-icon>
-                </a-tooltip>
-            </span>
-    <a-switch v-model="inbound.sniffing.enabled"></a-switch>
-  </a-form-item>
+    <a-form-item>
+        <span slot="label">
+            sniff
+            <a-tooltip><template slot="title">{{ i18n "sniff_desc" }}</template>
+                <a-icon type="question-circle" theme="filled"></a-icon>
+            </a-tooltip>
+        </span>
+        <a-switch v-model="inbound.sniff.sniff"></a-switch>
+    </a-form-item>
+    <a-form-item label='{{ i18n "sniff_override" }}'>
+        <a-switch v-model="inbound.sniff.sniff_override_destination"></a-switch>
+    </a-form-item>
+    <a-form-item label='{{ i18n "sniff_timeout_label" }}'>
+        <a-input v-model.trim="inbound.sniff.sniff_timeout" placeholder='{{ i18n "sniff_timeout_ph" }}'></a-input>
+    </a-form-item>
+    <a-form-item label="domain_strategy">
+        <a-select v-model="inbound.sniff.domain_strategy" style="width: 180px;">
+            <a-select-option value="">{{ i18n "sniff_default" }}</a-select-option>
+            <a-select-option value="prefer_ipv4">prefer_ipv4</a-select-option>
+            <a-select-option value="prefer_ipv6">prefer_ipv6</a-select-option>
+            <a-select-option value="ipv4_only">ipv4_only</a-select-option>
+            <a-select-option value="ipv6_only">ipv6_only</a-select-option>
+        </a-select>
+    </a-form-item>
 </a-form>
 {{end}}

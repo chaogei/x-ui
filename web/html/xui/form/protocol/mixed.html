@@ -1,0 +1,11 @@
+{{define "form/protocol/mixed"}}
+<!-- mixed = socks + http 两种方式同时支持 -->
+<a-form layout="inline">
+    <a-form-item label='{{ i18n "proto_username" }}'>
+        <a-input v-model.trim="inbound.settings.users[0].username"></a-input>
+    </a-form-item>
+    <a-form-item label='{{ i18n "proto_password" }}'>
+        <a-input v-model.trim="inbound.settings.users[0].password"></a-input>
+    </a-form-item>
+</a-form>
+{{end}}

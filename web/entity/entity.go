@@ -6,8 +6,8 @@ import (
 	"net"
 	"strings"
 	"time"
+	"x-ui/core/singbox"
 	"x-ui/util/common"
-	"x-ui/xray"
 )
 
 type Msg struct {
@@ -36,7 +36,7 @@ type AllSetting struct {
 	TgBotToken         string `json:"tgBotToken" form:"tgBotToken"`
 	TgBotChatId        int    `json:"tgBotChatId" form:"tgBotChatId"`
 	TgRunTime          string `json:"tgRunTime" form:"tgRunTime"`
-	XrayTemplateConfig string `json:"xrayTemplateConfig" form:"xrayTemplateConfig"`
+	CoreTemplateConfig string `json:"coreTemplateConfig" form:"coreTemplateConfig"`
 
 	TimeLocation string `json:"timeLocation" form:"timeLocation"`
 }
@@ -67,10 +67,9 @@ func (s *AllSetting) CheckValid() error {
 		s.WebBasePath += "/"
 	}
 
-	xrayConfig := &xray.Config{}
-	err := json.Unmarshal([]byte(s.XrayTemplateConfig), xrayConfig)
-	if err != nil {
-		return common.NewError("xray template config invalid:", err)
+	cfg := &singbox.Config{}
+	if err := json.Unmarshal([]byte(s.CoreTemplateConfig), cfg); err != nil {
+		return common.NewError("sing-box template config invalid:", err)
 	}
 
 	_, err = time.LoadLocation(s.TimeLocation)

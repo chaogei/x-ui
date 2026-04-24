@@ -11,7 +11,6 @@ import (
 	"x-ui/config"
 	"x-ui/database"
 	"x-ui/logger"
-	"x-ui/v2ui"
 	"x-ui/web"
 	"x-ui/web/global"
 	"x-ui/web/service"
@@ -50,9 +49,10 @@ func runWebServer() {
 		return
 	}
 
+	// 信号捕获：SIGHUP 走热重启、SIGINT/SIGTERM 走优雅停机。
+	// 注意 SIGKILL 和 SIGSTOP 在 POSIX 下无法被进程捕获，这里不再注册。
 	sigCh := make(chan os.Signal, 1)
-	//信号量捕获处理
-	signal.Notify(sigCh, syscall.SIGHUP, syscall.SIGTERM, syscall.SIGKILL)
+	signal.Notify(sigCh, syscall.SIGHUP, syscall.SIGINT, syscall.SIGTERM)
 	for {
 		sig := <-sigCh
 
@@ -70,7 +70,10 @@ func runWebServer() {
 				return
 			}
 		default:
-			server.Stop()
+			// SIGINT / SIGTERM：停机前必须关闭 sing-box 子进程（Server.Stop 内部链式调用）。
+			if err := server.Stop(); err != nil {
+				logger.Warning("stop server err:", err)
+			}
 			return
 		}
 	}
@@ -215,10 +218,6 @@ func main() {
 
 	runCmd := flag.NewFlagSet("run", flag.ExitOnError)
 
-	v2uiCmd := flag.NewFlagSet("v2-ui", flag.ExitOnError)
-	var dbPath string
-	v2uiCmd.StringVar(&dbPath, "db", "/etc/v2-ui/v2-ui.db", "set v2-ui db file path")
-
 	settingCmd := flag.NewFlagSet("setting", flag.ExitOnError)
 	var port int
 	var username string
@@ -245,7 +244,6 @@ func main() {
 		fmt.Println()
 		fmt.Println("Commands:")
 		fmt.Println("    run            run web panel")
-		fmt.Println("    v2-ui          migrate form v2-ui")
 		fmt.Println("    setting        set settings")
 	}
 
@@ -263,16 +261,6 @@ func main() {
 			return
 		}
 		runWebServer()
-	case "v2-ui":
-		err := v2uiCmd.Parse(os.Args[2:])
-		if err != nil {
-			fmt.Println(err)
-			return
-		}
-		err = v2ui.MigrateFromV2UI(dbPath)
-		if err != nil {
-			fmt.Println("migrate from v2-ui failed:", err)
-		}
 	case "setting":
 		err := settingCmd.Parse(os.Args[2:])
 		if err != nil {
@@ -291,11 +279,9 @@ func main() {
 			updateTgbotSetting(tgbottoken, tgbotchatid, tgbotRuntime)
 		}
 	default:
-		fmt.Println("except 'run' or 'v2-ui' or 'setting' subcommands")
+		fmt.Println("except 'run' or 'setting' subcommands")
 		fmt.Println()
 		runCmd.Usage()
-		fmt.Println()
-		v2uiCmd.Usage()
 		fmt.Println()
 		settingCmd.Usage()
 	}

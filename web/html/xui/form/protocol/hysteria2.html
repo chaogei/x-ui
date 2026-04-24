@@ -1,0 +1,32 @@
+{{define "form/protocol/hysteria2"}}
+<a-form layout="inline">
+    <a-form-item label='{{ i18n "proto_password" }}'>
+        <a-input v-model.trim="inbound.settings.users[0].password"></a-input>
+    </a-form-item>
+    <a-form-item label='{{ i18n "proto_up_mbps" }}'>
+        <a-input type="number" v-model.number="inbound.settings.up_mbps"></a-input>
+    </a-form-item>
+    <a-form-item label='{{ i18n "proto_down_mbps" }}'>
+        <a-input type="number" v-model.number="inbound.settings.down_mbps"></a-input>
+    </a-form-item>
+    <a-form-item label='{{ i18n "proto_ignore_bw" }}'>
+        <a-switch v-model="inbound.settings.ignore_client_bandwidth"></a-switch>
+    </a-form-item>
+</a-form>
+<!--
+  sing-box Hysteria2 masquerade 支持三种形式（参见官方文档）：
+    1. 字符串 URL："masquerade": "https://example.com"
+    2. 文件模式："masquerade": {"type": "file", "directory": "/srv/www"}
+    3. 代理模式："masquerade": {"type": "proxy", "url": "https://upstream", "rewrite_host": true}
+  面板直接接受原样 JSON（或纯 URL 字符串），提交时由 core.js 逐字段放入 settings.masquerade。
+  这样既不扩散 UI 复杂度，也能覆盖 sing-box 所有合法用法。
+-->
+<a-form-item label="masquerade">
+    <a-textarea
+        :rows="3"
+        v-model="inbound.settings.masquerade"
+        placeholder='{{ i18n "proto_masquerade_ph" }}'>
+    </a-textarea>
+</a-form-item>
+{{template "form/_tls"}}
+{{end}}

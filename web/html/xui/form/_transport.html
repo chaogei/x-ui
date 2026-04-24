@@ -1,0 +1,35 @@
+{{define "form/_transport"}}
+<!-- 通用 transport 字段块（依赖 inbound.settings.transport 指向 TransportBlock 实例） -->
+<a-divider>transport</a-divider>
+<a-form layout="inline">
+    <a-form-item label="type">
+        <a-select v-model="inbound.settings.transport.type" style="width: 160px;">
+            <a-select-option value="">{{ i18n "transport_none" }}</a-select-option>
+            <a-select-option value="ws">websocket</a-select-option>
+            <a-select-option value="httpupgrade">httpupgrade</a-select-option>
+            <a-select-option value="http">http</a-select-option>
+            <a-select-option value="grpc">grpc</a-select-option>
+            <a-select-option value="quic">quic</a-select-option>
+        </a-select>
+    </a-form-item>
+    <template v-if="inbound.settings.transport.type === 'ws' || inbound.settings.transport.type === 'httpupgrade'">
+        <a-form-item label="path">
+            <a-input v-model.trim="inbound.settings.transport.path" placeholder="/"></a-input>
+        </a-form-item>
+    </template>
+    <template v-if="inbound.settings.transport.type === 'http'">
+        <a-form-item label="path">
+            <a-input v-model.trim="inbound.settings.transport.path"></a-input>
+        </a-form-item>
+        <a-form-item label='{{ i18n "transport_host" }}'>
+            <a-input :value="inbound.settings.transport.host.join(',')"
+                     @change="e => inbound.settings.transport.host = (e.target.value||'').split(',').map(s=>s.trim()).filter(Boolean)"></a-input>
+        </a-form-item>
+    </template>
+    <template v-if="inbound.settings.transport.type === 'grpc'">
+        <a-form-item label="service_name">
+            <a-input v-model.trim="inbound.settings.transport.service_name"></a-input>
+        </a-form-item>
+    </template>
+</a-form>
+{{end}}

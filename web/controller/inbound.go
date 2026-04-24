@@ -13,7 +13,7 @@ import (
 
 type InboundController struct {
 	inboundService service.InboundService
-	xrayService    service.XrayService
+	coreService    service.CoreService
 }
 
 func NewInboundController(g *gin.RouterGroup) *InboundController {
@@ -36,10 +36,10 @@ func (a *InboundController) startTask() {
 	webServer := global.GetWebServer()
 	c := webServer.GetCron()
 	c.AddFunc("@every 10s", func() {
-		if a.xrayService.IsNeedRestartAndSetFalse() {
-			err := a.xrayService.RestartXray(false)
+		if a.coreService.IsNeedRestartAndSetFalse() {
+			err := a.coreService.RestartCore(false)
 			if err != nil {
-				logger.Error("restart xray failed:", err)
+				logger.Error("restart sing-box failed:", err)
 			}
 		}
 	})
@@ -65,11 +65,11 @@ func (a *InboundController) addInbound(c *gin.Context) {
 	user := session.GetLoginUser(c)
 	inbound.UserId = user.Id
 	inbound.Enable = true
-	inbound.Tag = fmt.Sprintf("inbound-%v", inbound.Port)
+	inbound.Tag = fmt.Sprintf("inbound-%v-%s", inbound.Port, inbound.Protocol)
 	err = a.inboundService.AddInbound(inbound)
 	jsonMsg(c, "添加", err)
 	if err == nil {
-		a.xrayService.SetToNeedRestart()
+		a.coreService.SetToNeedRestart()
 	}
 }
 
@@ -82,7 +82,7 @@ func (a *InboundController) delInbound(c *gin.Context) {
 	err = a.inboundService.DelInbound(id)
 	jsonMsg(c, "删除", err)
 	if err == nil {
-		a.xrayService.SetToNeedRestart()
+		a.coreService.SetToNeedRestart()
 	}
 }
 
@@ -103,6 +103,6 @@ func (a *InboundController) updateInbound(c *gin.Context) {
 	err = a.inboundService.UpdateInbound(inbound)
 	jsonMsg(c, "修改", err)
 	if err == nil {
-		a.xrayService.SetToNeedRestart()
+		a.coreService.SetToNeedRestart()
 	}
 }

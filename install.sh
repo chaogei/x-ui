@@ -106,23 +106,34 @@ install_x-ui() {
     systemctl stop x-ui
     cd /usr/local/
 
+    # 镜像前缀支持：用户在大陆环境下可 export MIRROR=https://ghproxy.com/
+    # 或 MIRROR=https://mirror.ghproxy.com/ 加速 github.com / raw.githubusercontent.com 下载。
+    # 留空表示直连 GitHub。
+    MIRROR="${MIRROR:-}"
+    if [[ -n "$MIRROR" && "${MIRROR: -1}" != "/" ]]; then
+        MIRROR="${MIRROR}/"
+    fi
+    if [[ -n "$MIRROR" ]]; then
+        echo -e "${yellow}已启用镜像前缀: ${MIRROR}${plain}"
+    fi
+
     if [ $# == 0 ]; then
-        last_version=$(curl -Ls "https://api.github.com/repos/vaxilu/x-ui/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+        last_version=$(curl -Ls "https://api.github.com/repos/chaogei/x-ui/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
         if [[ ! -n "$last_version" ]]; then
             echo -e "${red}检测 x-ui 版本失败，可能是超出 Github API 限制，请稍后再试，或手动指定 x-ui 版本安装${plain}"
             exit 1
         fi
         echo -e "检测到 x-ui 最新版本：${last_version}，开始安装"
-        wget -N --no-check-certificate -O /usr/local/x-ui-linux-${arch}.tar.gz https://github.com/vaxilu/x-ui/releases/download/${last_version}/x-ui-linux-${arch}.tar.gz
+        wget -N --no-check-certificate -O /usr/local/x-ui-linux-${arch}.tar.gz "${MIRROR}https://github.com/chaogei/x-ui/releases/download/${last_version}/x-ui-linux-${arch}.tar.gz"
         if [[ $? -ne 0 ]]; then
-            echo -e "${red}下载 x-ui 失败，请确保你的服务器能够下载 Github 的文件${plain}"
+            echo -e "${red}下载 x-ui 失败，请确保你的服务器能够下载 Github 的文件（或使用 MIRROR=https://ghproxy.com/ 重试）${plain}"
             exit 1
         fi
     else
         last_version=$1
-        url="https://github.com/vaxilu/x-ui/releases/download/${last_version}/x-ui-linux-${arch}.tar.gz"
+        url="${MIRROR}https://github.com/chaogei/x-ui/releases/download/${last_version}/x-ui-linux-${arch}.tar.gz"
         echo -e "开始安装 x-ui v$1"
-        wget -N --no-check-certificate -O /usr/local/x-ui-linux-${arch}.tar.gz ${url}
+        wget -N --no-check-certificate -O /usr/local/x-ui-linux-${arch}.tar.gz "${url}"
         if [[ $? -ne 0 ]]; then
             echo -e "${red}下载 x-ui v$1 失败，请确保此版本存在${plain}"
             exit 1
@@ -136,9 +147,32 @@ install_x-ui() {
     tar zxvf x-ui-linux-${arch}.tar.gz
     rm x-ui-linux-${arch}.tar.gz -f
     cd x-ui
-    chmod +x x-ui bin/xray-linux-${arch}
+    chmod +x x-ui
+
+    # 下载并释放 sing-box 内核（若安装包未自带）。
+    if [[ ! -x "bin/sing-box-linux-${arch}" ]]; then
+        mkdir -p bin
+        singbox_tag=$(curl -Ls "https://api.github.com/repos/SagerNet/sing-box/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+        if [[ -z "$singbox_tag" ]]; then
+            echo -e "${red}获取 sing-box 最新版本失败，请检查网络或稍后再试${plain}"
+            exit 1
+        fi
+        singbox_ver=${singbox_tag#v}
+        singbox_pkg="sing-box-${singbox_ver}-linux-${arch}.tar.gz"
+        singbox_url="${MIRROR}https://github.com/SagerNet/sing-box/releases/download/${singbox_tag}/${singbox_pkg}"
+        echo -e "正在下载 sing-box ${singbox_tag}..."
+        wget -N --no-check-certificate -O /tmp/${singbox_pkg} "${singbox_url}"
+        if [[ $? -ne 0 ]]; then
+            echo -e "${red}下载 sing-box 失败${plain}"
+            exit 1
+        fi
+        tar -xzf /tmp/${singbox_pkg} -C /tmp
+        cp /tmp/sing-box-${singbox_ver}-linux-${arch}/sing-box bin/sing-box-linux-${arch}
+        rm -rf /tmp/sing-box-${singbox_ver}-linux-${arch} /tmp/${singbox_pkg}
+    fi
+    chmod +x bin/sing-box-linux-${arch}
     cp -f x-ui.service /etc/systemd/system/
-    wget --no-check-certificate -O /usr/bin/x-ui https://raw.githubusercontent.com/vaxilu/x-ui/main/x-ui.sh
+    wget --no-check-certificate -O /usr/bin/x-ui "${MIRROR}https://raw.githubusercontent.com/chaogei/x-ui/main/x-ui.sh"
     chmod +x /usr/local/x-ui/x-ui.sh
     chmod +x /usr/bin/x-ui
     config_after_install
@@ -163,7 +197,6 @@ install_x-ui() {
     echo -e "x-ui enable       - 设置 x-ui 开机自启"
     echo -e "x-ui disable      - 取消 x-ui 开机自启"
     echo -e "x-ui log          - 查看 x-ui 日志"
-    echo -e "x-ui v2-ui        - 迁移本机器的 v2-ui 账号数据至 x-ui"
     echo -e "x-ui update       - 更新 x-ui 面板"
     echo -e "x-ui install      - 安装 x-ui 面板"
     echo -e "x-ui uninstall    - 卸载 x-ui 面板"

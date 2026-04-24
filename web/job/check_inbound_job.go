@@ -6,7 +6,7 @@ import (
 )
 
 type CheckInboundJob struct {
-	xrayService    service.XrayService
+	coreService    service.CoreService
 	inboundService service.InboundService
 }
 
@@ -20,6 +20,6 @@ func (j *CheckInboundJob) Run() {
 		logger.Warning("disable invalid inbounds err:", err)
 	} else if count > 0 {
 		logger.Debugf("disabled %v inbounds", count)
-		j.xrayService.SetToNeedRestart()
+		j.coreService.SetToNeedRestart()
 	}
 }

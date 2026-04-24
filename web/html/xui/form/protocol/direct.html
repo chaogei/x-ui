@@ -1,0 +1,17 @@
+{{define "form/protocol/direct"}}
+<a-form layout="inline">
+    <a-form-item label="override_address">
+        <a-input v-model.trim="inbound.settings.override_address"></a-input>
+    </a-form-item>
+    <a-form-item label="override_port">
+        <a-input type="number" v-model.number="inbound.settings.override_port"></a-input>
+    </a-form-item>
+    <a-form-item label="network">
+        <a-select v-model="inbound.settings.network" style="width: 120px;">
+            <a-select-option value="">tcp+udp</a-select-option>
+            <a-select-option value="tcp">tcp</a-select-option>
+            <a-select-option value="udp">udp</a-select-option>
+        </a-select>
+    </a-form-item>
+</a-form>
+{{end}}

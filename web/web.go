@@ -85,7 +85,7 @@ type Server struct {
 	server *controller.ServerController
 	xui    *controller.XUIController
 
-	xrayService    service.XrayService
+	coreService    service.CoreService
 	settingService service.SettingService
 	inboundService service.InboundService
 
@@ -280,17 +280,16 @@ func (s *Server) initI18n(engine *gin.Engine) error {
 }
 
 func (s *Server) startTask() {
-	err := s.xrayService.RestartXray(true)
-	if err != nil {
-		logger.Warning("start xray failed:", err)
+	if err := s.coreService.RestartCore(true); err != nil {
+		logger.Warning("start sing-box failed:", err)
 	}
-	// 每 30 秒检查一次 xray 是否在运行
-	s.cron.AddJob("@every 30s", job.NewCheckXrayRunningJob())
+	// 每 30 秒检查一次 sing-box 是否在运行
+	s.cron.AddJob("@every 30s", job.NewCheckCoreRunningJob())
 
 	go func() {
 		time.Sleep(time.Second * 5)
-		// 每 10 秒统计一次流量，首次启动延迟 5 秒，与重启 xray 的时间错开
-		s.cron.AddJob("@every 10s", job.NewXrayTrafficJob())
+		// 每 10 秒统计一次流量，首次启动延迟 5 秒，与内核启动时间错开
+		s.cron.AddJob("@every 10s", job.NewCoreTrafficJob())
 	}()
 
 	// 每 30 秒检查一次 inbound 流量超出和到期的情况
@@ -391,7 +390,7 @@ func (s *Server) Start() (err error) {
 
 func (s *Server) Stop() error {
 	s.cancel()
-	s.xrayService.StopXray()
+	_ = s.coreService.StopCore()
 	if s.cron != nil {
 		s.cron.Stop()
 	}
