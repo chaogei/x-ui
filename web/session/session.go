@@ -15,9 +15,16 @@ func init() {
 	gob.Register(model.User{})
 }
 
+// SetLoginUser 写入登录态。
+// 为避免 session cookie 承载密码哈希，这里只保留 Id / Username，
+// 校验旧密码等需求统一走 UserService.CheckUser 走 bcrypt 路径。
 func SetLoginUser(c *gin.Context, user *model.User) error {
 	s := sessions.Default(c)
-	s.Set(loginUser, user)
+	sanitized := model.User{
+		Id:       user.Id,
+		Username: user.Username,
+	}
+	s.Set(loginUser, sanitized)
 	return s.Save()
 }
 

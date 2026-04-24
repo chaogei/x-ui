@@ -121,22 +121,10 @@ class DBInbound {
         return Inbound.fromJson(config);
     }
 
+    // 委托 protocol_spec.js，分享链接支持性的单一来源在后端 core/singbox/spec。
+    // 新增协议只需更新后端 Shareable 字段即可生效。
     hasLink() {
-        switch (this.protocol) {
-            case Protocols.VMESS:
-            case Protocols.VLESS:
-            case Protocols.TROJAN:
-            case Protocols.SHADOWSOCKS:
-            case Protocols.HYSTERIA2:
-            case Protocols.TUIC:
-            case Protocols.SOCKS:
-            case Protocols.HTTP:
-                return true;
-            // anytls / shadowtls / naive / wireguard / mixed / direct：
-            // 无标准 URL scheme，面板隐藏复制 / 二维码按钮。
-            default:
-                return false;
-        }
+        return isShareableProtocol(this.protocol);
     }
 
     genLink() {

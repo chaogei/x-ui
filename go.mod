@@ -14,6 +14,7 @@ require (
 	github.com/shirou/gopsutil/v4 v4.24.10
 	github.com/xtls/xray-core v1.8.24
 	go.uber.org/atomic v1.11.0
+	golang.org/x/crypto v0.29.0
 	golang.org/x/text v0.20.0
 	google.golang.org/grpc v1.68.1
 	gorm.io/driver/sqlite v1.5.6

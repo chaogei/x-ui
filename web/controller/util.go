@@ -2,13 +2,35 @@ package controller
 
 import (
 	"github.com/gin-gonic/gin"
+	"github.com/nicksnyder/go-i18n/v2/i18n"
 	"net"
 	"net/http"
 	"strings"
 	"x-ui/config"
+	"x-ui/core/singbox/spec"
 	"x-ui/logger"
 	"x-ui/web/entity"
+	"x-ui/web/middleware"
 )
+
+// I18n 按 gin.Context 里注入的 localizer 翻译一个 messageID。
+// 找不到 localizer 或翻译失败时回退为 messageID 本身（前端肉眼可见，便于定位漏 key）。
+func I18n(c *gin.Context, messageID string) string {
+	v, ok := c.Get("localizer")
+	if !ok {
+		return messageID
+	}
+	localizer, ok := v.(*i18n.Localizer)
+	if !ok {
+		return messageID
+	}
+	msg, err := localizer.Localize(&i18n.LocalizeConfig{MessageID: messageID})
+	if err != nil {
+		logger.Warningf("i18n localize failed for %q: %v", messageID, err)
+		return messageID
+	}
+	return msg
+}
 
 func getUriId(c *gin.Context) int64 {
 	s := struct {
@@ -77,6 +99,12 @@ func html(c *gin.Context, name string, title string, data gin.H) {
 	data["title"] = title
 	data["request_uri"] = c.Request.RequestURI
 	data["base_path"] = c.GetString("base_path")
+	// csrf_token 由 middleware.CSRF 在请求 context 里注入，供 head 模板渲染到 <meta name="csrf-token">
+	data["csrf_token"] = middleware.SessionCSRFToken(c)
+	// protocol_specs 是 sing-box 协议元数据单一来源的前端副本。
+	// 以 []spec.Spec 注入，Go html/template 在 <script> 上下文会按 JS 字面量编码，
+	// 前端拿到的直接是对象字面量，无需 JSON.parse。
+	data["protocol_specs"] = spec.All()
 	c.HTML(http.StatusOK, name, getContext(data))
 }
 

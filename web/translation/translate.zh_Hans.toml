@@ -191,6 +191,18 @@
 "setting_timezone_desc" = "定时任务按照该时区的时间运行，重启面板生效"
 "confirm_restart_content" = "确定要重启面板吗？点击确定将于 3 秒后重启，若重启后无法访问面板，请前往服务器查看面板日志信息"
 
+# ------- 认证相关（服务端返回消息） -------
+"auth_session_expired" = "登录时效已过，请重新登录"
+"auth_form_error" = "数据格式错误"
+"auth_username_required" = "请输入用户名"
+"auth_password_required" = "请输入密码"
+"auth_invalid_credentials" = "用户名或密码错误"
+"auth_ip_locked" = "登录失败次数过多，已被临时锁定，请稍后再试"
+"auth_login_success" = "登录成功"
+"auth_session_save_failed" = "登录态保存失败，请重试"
+"auth_wrong_old_credentials" = "原用户名或原密码错误"
+"auth_new_empty" = "新用户名和新密码不能为空"
+
 # ------- 系统状态 -------
 "status" = "状态"
 "running" = "运行中"

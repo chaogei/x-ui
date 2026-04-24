@@ -51,7 +51,10 @@
         <p>{{ i18n "info_congestion" }}: <a-tag color="green">[[ inbound.settings.congestion_control ]]</a-tag></p>
     </template>
     <template v-if="dbInbound.isAnyTLS || dbInbound.isShadowTLS">
-        <p>{{ i18n "info_username" }}: <a-tag color="green">[[ inbound.username ]]</a-tag></p>
+        <!-- AnyTLS/ShadowTLS 的 users[0] 结构为 {name, password}，没有 username 字段。
+             这里展示的是用户的人类可读备注名（settings.users[0].name），
+             与 socks/http 等协议的 "认证 username" 语义不同，故直读 settings 层。 -->
+        <p>{{ i18n "info_username" }}: <a-tag color="green">[[ (inbound.settings.users[0] && inbound.settings.users[0].name) || '' ]]</a-tag></p>
         <p>{{ i18n "info_password" }}: <a-tag color="green">[[ inbound.password ]]</a-tag></p>
     </template>
     <template v-if="dbInbound.isNaive">

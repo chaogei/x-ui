@@ -18,6 +18,7 @@ import (
 	"x-ui/util/common"
 	"x-ui/web/controller"
 	"x-ui/web/job"
+	"x-ui/web/middleware"
 	"x-ui/web/network"
 	"x-ui/web/service"
 
@@ -89,6 +90,9 @@ type Server struct {
 	settingService service.SettingService
 	inboundService service.InboundService
 
+	// loginLimiter 面板登录失败 IP 限流器，跨请求共享内存状态
+	loginLimiter *service.LoginLimiter
+
 	cron *cron.Cron
 
 	ctx    context.Context
@@ -98,9 +102,18 @@ type Server struct {
 func NewServer() *Server {
 	ctx, cancel := context.WithCancel(context.Background())
 	return &Server{
-		ctx:    ctx,
-		cancel: cancel,
+		ctx:          ctx,
+		cancel:       cancel,
+		loginLimiter: service.NewLoginLimiter(),
 	}
+}
+
+// isHTTPS 根据 settingService 中的证书配置判定面板是否运行在 HTTPS 模式。
+// 用于驱动 session cookie 的 Secure 属性；读取失败时保守返回 false。
+func (s *Server) isHTTPS() bool {
+	cert, _ := s.settingService.GetCertFile()
+	key, _ := s.settingService.GetKeyFile()
+	return cert != "" && key != ""
 }
 
 func (s *Server) getHtmlFiles() ([]string, error) {
@@ -167,8 +180,22 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 	}
 	assetsBasePath := basePath + "assets/"
 
+	// session cookie 在两种传输上都强化：
+	//   HttpOnly       : 禁止 JS 访问 document.cookie，挡 XSS 偷 session
+	//   SameSite=Lax   : 阻止跨站自动携带，降低 CSRF 攻击面（同时 CSRF 中间件兜底）
+	//   Secure         : 仅在面板配置了 TLS 证书时开启，HTTP 模式下若开启会导致 cookie 完全不下发
+	//   MaxAge 6 小时  : 控制长期留存风险；到期后需重新登录
 	store := cookie.NewStore(secret)
+	store.Options(sessions.Options{
+		Path:     basePath,
+		HttpOnly: true,
+		SameSite: http.SameSiteLaxMode,
+		Secure:   s.isHTTPS(),
+		MaxAge:   6 * 60 * 60,
+	})
 	engine.Use(sessions.Sessions("session", store))
+	// CSRF 中间件依赖 sessions 已挂载：对 GET 自动下发 token，对非幂等方法强制校验 header
+	engine.Use(middleware.CSRF())
 	engine.Use(func(c *gin.Context) {
 		c.Set("base_path", basePath)
 	})
@@ -203,7 +230,7 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 
 	g := engine.Group(basePath)
 
-	s.index = controller.NewIndexController(g)
+	s.index = controller.NewIndexController(g, s.loginLimiter)
 	s.server = controller.NewServerController(g)
 	s.xui = controller.NewXUIController(g)
 

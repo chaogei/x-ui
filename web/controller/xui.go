@@ -9,6 +9,9 @@ type XUIController struct {
 
 	inboundController *InboundController
 	settingController *SettingController
+	// protocolController 暴露 sing-box 协议元数据，供前端初始化时拉取，
+	// 作为 ProtocolSpec 的单一来源（SSoT）。
+	protocolController *ProtocolController
 }
 
 func NewXUIController(g *gin.RouterGroup) *XUIController {
@@ -27,16 +30,17 @@ func (a *XUIController) initRouter(g *gin.RouterGroup) {
 
 	a.inboundController = NewInboundController(g)
 	a.settingController = NewSettingController(g)
+	a.protocolController = NewProtocolController(g)
 }
 
 func (a *XUIController) index(c *gin.Context) {
-	html(c, "index.html", "系统状态", nil)
+	html(c, "index.html", I18n(c, "menu_system_status"), nil)
 }
 
 func (a *XUIController) inbounds(c *gin.Context) {
-	html(c, "inbounds.html", "入站列表", nil)
+	html(c, "inbounds.html", I18n(c, "menu_inbound_list"), nil)
 }
 
 func (a *XUIController) setting(c *gin.Context) {
-	html(c, "setting.html", "设置", nil)
+	html(c, "setting.html", I18n(c, "menu_panel_setting"), nil)
 }

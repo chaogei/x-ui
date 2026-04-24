@@ -187,6 +187,18 @@
 "setting_timezone_desc" = "Scheduled tasks run in this time zone. Requires restart"
 "confirm_restart_content" = "Restart panel? It will restart in 3 seconds. If the panel becomes unreachable, check the server logs"
 
+# ------- Auth messages (server side) -------
+"auth_session_expired" = "Session expired, please sign in again"
+"auth_form_error" = "Invalid request format"
+"auth_username_required" = "Username is required"
+"auth_password_required" = "Password is required"
+"auth_invalid_credentials" = "Invalid username or password"
+"auth_ip_locked" = "Too many failed attempts, your IP has been temporarily locked. Try again later"
+"auth_login_success" = "Signed in"
+"auth_session_save_failed" = "Failed to persist session, please retry"
+"auth_wrong_old_credentials" = "Old username or password is incorrect"
+"auth_new_empty" = "New username and password cannot be empty"
+
 # ------- System status -------
 "status" = "status"
 "running" = "running"

@@ -4,6 +4,7 @@
     <meta name="renderer" content="webkit">
     <meta http-equiv="X-UA-Compatible" content="IE=edge,chrome=1">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="csrf-token" content="{{ .csrf_token }}">
     <link rel="stylesheet" href="{{ .base_path }}assets/ant-design-vue@1.7.2/antd.min.css">
     <link rel="stylesheet" href="{{ .base_path }}assets/element-ui@2.15.0/theme-chalk/display.css">
     <link rel="stylesheet" href="{{ .base_path }}assets/css/custom.css?{{ .cur_ver }}">
@@ -12,6 +13,12 @@
             display: none;
         }
     </style>
+    <!--
+      window.__PROTOCOL_SPECS__ 是 sing-box 协议元数据的前端副本，来源于后端 core/singbox/spec。
+      在 <script> 上下文下由 Go html/template 自动按 JS 字面量编码注入，前端 protocol_spec.js
+      直接消费，无需 JSON.parse，也无异步时序问题。新增协议时只需更新后端注册表。
+    -->
+    <script>window.__PROTOCOL_SPECS__ = {{ .protocol_specs }};</script>
     <title>{{.title}}</title>
 </head>
 {{end}}

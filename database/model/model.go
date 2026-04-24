@@ -1,7 +1,10 @@
 package model
 
 import (
+	"fmt"
+
 	"x-ui/core/singbox"
+	"x-ui/core/singbox/spec"
 	"x-ui/util/json_util"
 )
 
@@ -31,10 +34,36 @@ const (
 	Direct Protocol = "direct"
 )
 
+// allProtocols 列出 model 层声明的全部协议常量，仅用于 init 自检。
+// 新增 Protocol 常量时必须同步加入此列表并在 core/singbox/spec 注册。
+func allProtocols() []Protocol {
+	return []Protocol{
+		VMess, VLESS, Trojan, Shadowsocks,
+		Hysteria2, TUIC, AnyTLS, ShadowTLS, Naive, WireGuard,
+		Socks, HTTP, Mixed,
+		Direct,
+	}
+}
+
+// init 启动期校验：所有 model.Protocol 常量必须在 core/singbox/spec 注册，
+// 缺项属于开发期错误，必须立即暴露（fail-fast）以防止进入生产。
+func init() {
+	for _, p := range allProtocols() {
+		if _, ok := spec.Get(string(p)); !ok {
+			panic(fmt.Sprintf("model.Protocol %q 未在 core/singbox/spec 注册", p))
+		}
+	}
+}
+
 // IsEndpoint 判断协议应挂在 sing-box 的 endpoints 列表而非 inbounds。
 // sing-box 1.11+ 将 WireGuard 等隧道协议从 inbound 迁移至 endpoint。
+// 元数据来源于 core/singbox/spec，此处仅做委托以消除定义重复。
 func (p Protocol) IsEndpoint() bool {
-	return p == WireGuard
+	s, ok := spec.Get(string(p))
+	if !ok {
+		return false
+	}
+	return s.IsEndpoint
 }
 
 type User struct {
@@ -77,15 +106,15 @@ type Inbound struct {
 //
 // 用于端口冲突校验：同一端口下 TCP 和 UDP 协议可以并存，
 // 同网络类型的协议（两个 TCP 或两个 UDP）则不行。
+// 元数据来源于 core/singbox/spec，此处仅做委托以消除定义重复。
+// 未知协议（仅可能来自数据库历史脏数据）保守回退到 "tcp"，
+// 与端口冲突校验的最严格语义一致。
 func (p Protocol) Network() string {
-	switch p {
-	case Hysteria2, TUIC, WireGuard:
-		return "udp"
-	case Mixed, Socks:
-		return "both"
-	default:
+	s, ok := spec.Get(string(p))
+	if !ok {
 		return "tcp"
 	}
+	return s.Network
 }
 
 // ConflictsWith 判断新协议与同端口已有协议是否发生网络层冲突。

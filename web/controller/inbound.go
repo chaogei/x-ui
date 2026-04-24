@@ -70,6 +70,18 @@ func (a *InboundController) addInbound(c *gin.Context) {
 	jsonMsg(c, "添加", err)
 	if err == nil {
 		a.coreService.SetToNeedRestart()
+		service.Audit(c, service.EventInboundAdd, "ok", map[string]interface{}{
+			"inbound_id": inbound.Id,
+			"protocol":   inbound.Protocol,
+			"port":       inbound.Port,
+			"remark":     inbound.Remark,
+		})
+	} else {
+		service.Audit(c, service.EventInboundAdd, "fail", map[string]interface{}{
+			"protocol": inbound.Protocol,
+			"port":     inbound.Port,
+			"error":    err.Error(),
+		})
 	}
 }
 
@@ -83,6 +95,14 @@ func (a *InboundController) delInbound(c *gin.Context) {
 	jsonMsg(c, "删除", err)
 	if err == nil {
 		a.coreService.SetToNeedRestart()
+		service.Audit(c, service.EventInboundDelete, "ok", map[string]interface{}{
+			"inbound_id": id,
+		})
+	} else {
+		service.Audit(c, service.EventInboundDelete, "fail", map[string]interface{}{
+			"inbound_id": id,
+			"error":      err.Error(),
+		})
 	}
 }
 
@@ -104,5 +124,16 @@ func (a *InboundController) updateInbound(c *gin.Context) {
 	jsonMsg(c, "修改", err)
 	if err == nil {
 		a.coreService.SetToNeedRestart()
+		service.Audit(c, service.EventInboundUpdate, "ok", map[string]interface{}{
+			"inbound_id": id,
+			"protocol":   inbound.Protocol,
+			"port":       inbound.Port,
+			"remark":     inbound.Remark,
+		})
+	} else {
+		service.Audit(c, service.EventInboundUpdate, "fail", map[string]interface{}{
+			"inbound_id": id,
+			"error":      err.Error(),
+		})
 	}
 }

@@ -13,33 +13,17 @@
 
 /* ================= 协议 & 常量 ================= */
 
-const Protocols = {
-    VMESS: 'vmess',
-    VLESS: 'vless',
-    TROJAN: 'trojan',
-    SHADOWSOCKS: 'shadowsocks',
-    HYSTERIA2: 'hysteria2',
-    TUIC: 'tuic',
-    ANYTLS: 'anytls',
-    SHADOWTLS: 'shadowtls',
-    NAIVE: 'naive',
-    WIREGUARD: 'wireguard',
-    SOCKS: 'socks',
-    HTTP: 'http',
-    MIXED: 'mixed',
-    DIRECT: 'direct',
-};
-Object.freeze(Protocols);
-
-// endpoints 类协议：挂到 sing-box 的 "endpoints" 列表而非 "inbounds"。
-const EndpointProtocols = new Set([Protocols.WIREGUARD]);
-function isEndpointProtocol(p) { return EndpointProtocols.has(p); }
-
-// 链接生成支持的协议集合。
-const SHAREABLE_PROTOCOLS = new Set([
-    Protocols.VMESS, Protocols.VLESS, Protocols.TROJAN,
-    Protocols.SHADOWSOCKS, Protocols.HYSTERIA2, Protocols.TUIC,
-]);
+// Protocols 是"大写 KEY → 协议字符串"的便捷别名，从 ProtocolSpecs 派生以保证
+// 与后端 core/singbox/spec 注册表完全一致。
+// 历史代码广泛使用 Protocols.VMESS 等形式（Vue 模板 / DBInbound.isXxx），派生方式
+// 保留此习惯，避免改动消费者。
+// endpoint / shareable 分类统一通过 protocol_spec.js 的
+// isEndpointProtocol / isShareableProtocol 查询，不再在此维护独立 Set。
+const Protocols = (function () {
+    const out = {};
+    allProtocolKeys().forEach(k => { out[k.toUpperCase()] = k; });
+    return Object.freeze(out);
+})();
 
 // sing-box shadowsocks 支持的加密方式（含 2022 系列）。
 const SSMethods = {
@@ -272,67 +256,41 @@ class Inbound extends CoreCommonClass {
     }
 
     get isEndpoint() { return isEndpointProtocol(this._protocol); }
-    get canShare() { return SHAREABLE_PROTOCOLS.has(this._protocol); }
-    get canSniff() {
-        switch (this._protocol) {
-            case Protocols.VMESS: case Protocols.VLESS: case Protocols.TROJAN:
-            case Protocols.SHADOWSOCKS: case Protocols.HYSTERIA2: case Protocols.TUIC:
-            case Protocols.ANYTLS: case Protocols.SHADOWTLS: case Protocols.NAIVE:
-            case Protocols.SOCKS: case Protocols.HTTP: case Protocols.MIXED:
-                return true;
-            default:
-                return false;
-        }
-    }
+    get canShare() { return isShareableProtocol(this._protocol); }
+    get canSniff() { return isSniffableProtocol(this._protocol); }
 
     // —— 面板/链接生成常用读取器 —— //
-    get uuid() {
-        if (this._protocol === Protocols.VMESS || this._protocol === Protocols.VLESS) {
-            const u = (this.settings.users || [])[0];
-            return u ? (u.uuid || '') : '';
+    //
+    // uuid / password / username 三个 getter 以前各自 switch 6~8 个协议分支；
+    // 实际上三者都是"按 UserSchema 定位用户字段并取值"的同一语义，现统一走
+    // _getUserField 派生，规则如下：
+    //   - 字段名必须是该协议 UserSchema 的 Identifier 或 Credentials 之一，否则返回 ''
+    //   - Container='users' → 从 settings.users[0][fieldName] 取（多数协议）
+    //   - Container=''      → 从 settings[fieldName] 取（shadowsocks 顶层 password）
+    //
+    // 注意语义边界：AnyTLS/ShadowTLS 的 UserSchema.Identifier='password'，不含 username，
+    // 因此 this.username 对它们严格返回 ''；如需展示用户备注名请直接读
+    // settings.users[0].name（inbound_info.html 已按此分离）。
+    _getUserField(fieldName) {
+        const spec = ProtocolSpecs[this._protocol];
+        if (!spec || !spec.users) return '';
+        const { container, identifier, credentials = [] } = spec.users;
+        const validFields = [identifier, ...credentials].filter(Boolean);
+        if (!validFields.includes(fieldName)) return '';
+        if (container === '') {
+            return (this.settings && this.settings[fieldName]) || '';
         }
-        if (this._protocol === Protocols.TUIC) {
-            const u = (this.settings.users || [])[0];
-            return u ? (u.uuid || '') : '';
-        }
-        return '';
+        const arr = this.settings && this.settings[container];
+        if (!Array.isArray(arr) || arr.length === 0) return '';
+        return arr[0][fieldName] || '';
     }
-    get password() {
-        switch (this._protocol) {
-            case Protocols.TROJAN: case Protocols.ANYTLS:
-            case Protocols.SHADOWTLS:
-            case Protocols.NAIVE: {
-                const u = (this.settings.users || [])[0];
-                return u ? (u.password || '') : '';
-            }
-            case Protocols.SHADOWSOCKS:
-                return this.settings.password || '';
-            case Protocols.HYSTERIA2: {
-                const u = (this.settings.users || [])[0];
-                return u ? (u.password || '') : '';
-            }
-            case Protocols.TUIC: {
-                const u = (this.settings.users || [])[0];
-                return u ? (u.password || '') : '';
-            }
-            case Protocols.SOCKS: case Protocols.HTTP: case Protocols.MIXED:
-            case Protocols.NAIVE: {
-                const u = (this.settings.users || [])[0];
-                return u ? (u.password || '') : '';
-            }
-            default: return '';
-        }
-    }
-    get username() {
-        switch (this._protocol) {
-            case Protocols.SOCKS: case Protocols.HTTP: case Protocols.MIXED:
-            case Protocols.NAIVE: case Protocols.ANYTLS: case Protocols.SHADOWTLS: {
-                const u = (this.settings.users || [])[0];
-                return u ? (u.username || u.name || '') : '';
-            }
-            default: return '';
-        }
-    }
+
+    get uuid()     { return this._getUserField('uuid'); }
+    get password() { return this._getUserField('password'); }
+    get username() { return this._getUserField('username'); }
+
+    // shadowsocks 独有的加密方法字段，与"用户"维度无关，保留单行判断。
+    // 若未来有更多协议引入同类"协议顶层标量字段"，再考虑在 Spec 增加 Extras 映射。
     get method() { return this._protocol === Protocols.SHADOWSOCKS ? (this.settings.method || '') : ''; }
 
     get tls() { return !!(this.settings && this.settings.tls && this.settings.tls.enabled); }
@@ -344,24 +302,12 @@ class Inbound extends CoreCommonClass {
     }
 
     // —— 默认 Settings —— //
+    // 委托到 protocol_spec.js，字段 schema 的单一来源在 ProtocolSpecs 注册表。
+    // 未知协议（后端新增但前端 defaults 未补齐）在 protocol_spec.js 合并阶段已被 fail-fast，
+    // 此处只需优雅返回空对象，保证 Vue 绑定不 NPE。
     static defaultSettings(protocol) {
-        switch (protocol) {
-            case Protocols.VMESS: return InboundSettings.vmess();
-            case Protocols.VLESS: return InboundSettings.vless();
-            case Protocols.TROJAN: return InboundSettings.trojan();
-            case Protocols.SHADOWSOCKS: return InboundSettings.shadowsocks();
-            case Protocols.HYSTERIA2: return InboundSettings.hysteria2();
-            case Protocols.TUIC: return InboundSettings.tuic();
-            case Protocols.ANYTLS: return InboundSettings.anytls();
-            case Protocols.SHADOWTLS: return InboundSettings.shadowtls();
-            case Protocols.NAIVE: return InboundSettings.naive();
-            case Protocols.WIREGUARD: return InboundSettings.wireguard();
-            case Protocols.SOCKS: return InboundSettings.socksLike(Protocols.SOCKS);
-            case Protocols.HTTP: return InboundSettings.socksLike(Protocols.HTTP);
-            case Protocols.MIXED: return InboundSettings.socksLike(Protocols.MIXED);
-            case Protocols.DIRECT: return InboundSettings.direct();
-            default: return {};
-        }
+        const s = ProtocolSpecs[protocol];
+        return s ? s.defaults() : {};
     }
 
     static fromJson(json={}) {
@@ -533,109 +479,12 @@ class Inbound extends CoreCommonClass {
     }
 }
 
-/* ================= 协议私有 settings 默认值 & 序列化 ================= */
+/* ================= 协议私有 settings 序列化辅助 ================= */
 
+// InboundSettings 以前同时承担"默认值工厂 + JSON 序列化"两个职责；
+// 默认值工厂已全部迁入 protocol_spec.js 的 _frontendPatch（单一来源），
+// 此处只保留 fromJson / toJson 两个与协议无关的通用序列化方法。
 const InboundSettings = {
-    vmess() {
-        return {
-            users: [{ name: '', uuid: RandomUtil.randomUUID(), alterId: 0 }],
-            tls: new TlsBlock(),
-            transport: new TransportBlock(),
-        };
-    },
-    vless() {
-        return {
-            users: [{ name: '', uuid: RandomUtil.randomUUID(), flow: '' }],
-            tls: new TlsBlock(),
-            transport: new TransportBlock(),
-        };
-    },
-    trojan() {
-        return {
-            users: [{ name: '', password: RandomUtil.randomSeq(16) }],
-            tls: new TlsBlock(true),
-            transport: new TransportBlock(),
-        };
-    },
-    shadowsocks() {
-        return {
-            method: SSMethods.AES_256_GCM,
-            password: RandomUtil.randomSeq(16),
-            network: '',
-        };
-    },
-    hysteria2() {
-        return {
-            up_mbps: 100,
-            down_mbps: 100,
-            users: [{ name: '', password: RandomUtil.randomSeq(16) }],
-            masquerade: '',
-            ignore_client_bandwidth: false,
-            tls: new TlsBlock(true),
-        };
-    },
-    tuic() {
-        return {
-            users: [{ name: '', uuid: RandomUtil.randomUUID(), password: RandomUtil.randomSeq(16) }],
-            congestion_control: 'bbr',
-            auth_timeout: '3s',
-            zero_rtt_handshake: false,
-            heartbeat: '10s',
-            tls: new TlsBlock(true),
-        };
-    },
-    anytls() {
-        return {
-            users: [{ name: '', password: RandomUtil.randomSeq(16) }],
-            padding_scheme: [],
-            tls: new TlsBlock(true),
-        };
-    },
-    shadowtls() {
-        return {
-            version: 3,
-            users: [{ name: '', password: RandomUtil.randomSeq(16) }],
-            handshake: { server: 'www.microsoft.com', server_port: 443 },
-            strict_mode: false,
-        };
-    },
-    naive() {
-        return {
-            users: [{ username: '', password: RandomUtil.randomSeq(16) }],
-            tls: new TlsBlock(true),
-        };
-    },
-    wireguard() {
-        return {
-            system: false,
-            mtu: 1420,
-            address: ['10.0.0.1/32'],
-            private_key: '',
-            peers: [{
-                address: '',
-                port: 51820,
-                public_key: '',
-                pre_shared_key: '',
-                allowed_ips: ['0.0.0.0/0'],
-                persistent_keepalive_interval: 0,
-            }],
-        };
-    },
-    socksLike(proto) {
-        const base = {
-            users: [{ username: '', password: RandomUtil.randomSeq(10) }],
-        };
-        if (proto === Protocols.SOCKS) base.users[0].username = RandomUtil.randomSeq(6);
-        return base;
-    },
-    direct() {
-        return {
-            override_address: '',
-            override_port: 0,
-            network: '',
-        };
-    },
-
     fromJson(protocol, json) {
         // 为简化，直接返回 JSON；TLS/Transport 若存在则用其类封装。
         const out = JSON.parse(JSON.stringify(json));

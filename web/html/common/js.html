@@ -12,6 +12,10 @@
 <script src="{{ .base_path }}assets/js/util/common.js?{{ .cur_ver }}"></script>
 <script src="{{ .base_path }}assets/js/util/date-util.js?{{ .cur_ver }}"></script>
 <script src="{{ .base_path }}assets/js/util/utils.js?{{ .cur_ver }}"></script>
+<!-- protocol_spec.js 必须在 core.js / models.js 之前加载：
+     core.js 中 InboundSettings / Inbound.canShare / Inbound.isEndpoint 会查询 ProtocolSpecs，
+     models.js 中 DBInbound.hasLink 也会委托到 ProtocolSpecs。 -->
+<script src="{{ .base_path }}assets/js/model/protocol_spec.js?{{ .cur_ver }}"></script>
 <script src="{{ .base_path }}assets/js/model/core.js?{{ .cur_ver }}"></script>
 <script src="{{ .base_path }}assets/js/model/models.js?{{ .cur_ver }}"></script>
 <script>
