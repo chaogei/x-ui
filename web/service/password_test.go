@@ -83,7 +83,7 @@ func TestIsBcryptHash(t *testing.T) {
 		t.Fatal(err)
 	}
 	cases := map[string]bool{
-		real:  true,
+		real:                                true,
 		"$2a$10$" + strings.Repeat("a", 53): true,
 		"$2b$10$" + strings.Repeat("a", 53): true,
 		"$2y$10$" + strings.Repeat("a", 53): true,
