@@ -20,6 +20,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -54,6 +55,8 @@ type panel struct {
 	basePath string
 
 	// lastSessionCookie 是服务端最近一次下发的 session cookie 原件。
+	// 并发用例会从多个 goroutine 发请求，故加锁。
+	cookieMu          sync.Mutex
 	lastSessionCookie *http.Cookie
 
 	// 首启公告里的凭证——测试能登录的唯一途径，和运维看 journalctl 一样。
@@ -84,6 +87,23 @@ func writeSetting(t *testing.T, key, value string) {
 	if err := db.Save(existing).Error; err != nil {
 		t.Fatalf("save setting %s: %v", key, err)
 	}
+}
+
+// newBareDB 只初始化数据库，不搭 HTTP 层。
+// 给那些要自己调 Server.Start() / Stop() 的生命周期用例使用。
+func newBareDB(t *testing.T) {
+	t.Helper()
+
+	dbPath := filepath.Join(t.TempDir(), "x-ui.db")
+	t.Setenv("XUI_DB_PATH", dbPath)
+
+	old := database.SetCredentialsOutput(io.Discard)
+	t.Cleanup(func() { database.SetCredentialsOutput(old) })
+
+	if err := database.InitDB(dbPath); err != nil {
+		t.Fatalf("init database: %v", err)
+	}
+	t.Cleanup(func() { _ = database.CloseDB() })
 }
 
 type panelOption func(*panelConfig)
@@ -223,11 +243,13 @@ func (p *panel) do(req *http.Request) *http.Response {
 	}
 	// cookiejar 只保留 name/value，HttpOnly / Path / MaxAge 这些属性会被丢掉，
 	// 而它们正是要断言的对象，所以在这里直接留存原始的 Set-Cookie。
+	p.cookieMu.Lock()
 	for _, c := range resp.Cookies() {
 		if c.Name == "session" {
 			p.lastSessionCookie = c
 		}
 	}
+	p.cookieMu.Unlock()
 	return resp
 }
 
@@ -312,6 +334,8 @@ func (p *panel) loginAs(username, password string, wantSuccess bool) apiMsg {
 // sessionCookie 返回服务端最近一次下发的 session cookie（含全部属性）。
 func (p *panel) sessionCookie() *http.Cookie {
 	p.t.Helper()
+	p.cookieMu.Lock()
+	defer p.cookieMu.Unlock()
 	return p.lastSessionCookie
 }
 

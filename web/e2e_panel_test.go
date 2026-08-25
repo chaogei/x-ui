@@ -519,12 +519,15 @@ func (p *panel) listInbounds() []*model.Inbound {
 func newPanelClient(t *testing.T, base *panel) *panel {
 	t.Helper()
 
-	clone := *base
-	clone.t = t
-	b := base.newClient()
-	clone.client = b.client
-	clone.lastSessionCookie = nil
-	return &clone
+	return &panel{
+		t:        t,
+		server:   base.server,
+		http:     base.http,
+		client:   base.newClient().client,
+		basePath: base.basePath,
+		username: base.username,
+		password: base.password,
+	}
 }
 
 // settingsForm 把 /setting/all 的响应转回表单，模拟前端"读出来改一个字段再提交"。
