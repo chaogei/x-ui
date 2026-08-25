@@ -63,8 +63,16 @@ jobs:
       - name: Vet
         run: go vet ./...
 
+      # 面板的部署形态是 CGO_ENABLED=0 的静态二进制，所以先按那个配置跑一遍
+      # 测试：驱动、embed、模板解析都要在真正发布的构建条件下验证过。
+      - name: Test
+        env:
+          CGO_ENABLED: 0
+        run: go test -count=1 -timeout 15m ./...
+
       # -race 需要 cgo，ubuntu-latest 自带 gcc。
+      # 端到端用例里有并发登录与并发混合语言渲染，就是冲着这一步来的。
       - name: Test (race)
         env:
           CGO_ENABLED: 1
-        run: go test -race -count=1 ./...
+        run: go test -race -count=1 -timeout 20m ./...

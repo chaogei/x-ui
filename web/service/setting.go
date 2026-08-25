@@ -1,7 +1,6 @@
 package service
 
 import (
-	_ "embed"
 	"errors"
 	"fmt"
 	"reflect"
@@ -9,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"time"
+	"x-ui/core/singbox"
 	"x-ui/database"
 	"x-ui/database/model"
 	"x-ui/logger"
@@ -18,8 +18,12 @@ import (
 	"x-ui/web/entity"
 )
 
-//go:embed config.json
-var coreTemplateConfig string
+// coreTemplateConfig 是全新安装时写入 settings 的 sing-box 配置模板。
+//
+// 这里直接引用 core/singbox 的常量，而不是再嵌一份 config.json：
+// 两份内容曾经逐字节相同，改一处忘另一处时，新装面板拿到的模板会与
+// 内核代码的假设（例如 v2ray_api 的监听端口）悄悄对不上。
+var coreTemplateConfig = singbox.DefaultTemplate
 
 // secretKey 是存放 session cookie store 密钥的 settings 键。
 // 它不属于 defaultValueMap：默认值必须是 CSPRNG 产物且只生成一次，

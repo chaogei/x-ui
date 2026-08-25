@@ -62,9 +62,10 @@ func TestConfigEquals(t *testing.T) {
 	}
 }
 
-// TestDefaultTemplateMatchesEmbeddedConfig 保证 singbox.DefaultTemplate 与
-// web/service/config.json 这两份"同一个默认模板"不会各自漂移。
-// 两处内容必须语义等价（允许缩进差异）。
+// TestDefaultTemplateIsValidSingBoxConfig 守住新装面板拿到的默认模板。
+//
+// 这个常量现在是唯一来源（web/service 直接引用它），一旦写坏，
+// 所有新部署的面板都起不了内核，或者起来了但流量统计恒为 0。
 func TestDefaultTemplateIsValidSingBoxConfig(t *testing.T) {
 	cfg := &Config{}
 	if err := json.Unmarshal([]byte(DefaultTemplate), cfg); err != nil {
