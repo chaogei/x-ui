@@ -78,6 +78,39 @@ type Release struct {
 	TagName string `json:"tag_name"`
 }
 
+// releaseAsset 是 GitHub Releases API 中单个 release 资产的相关字段。
+//
+// digest 是 GitHub 于 2025 年为 release 资产补上的字段，形如
+// "sha256:<64 hex>"，由 GitHub 在上传时计算。sing-box 从不发布 .sha256
+// 侧车文件，所以这是唯一可用的权威校验源。
+type releaseAsset struct {
+	Name   string `json:"name"`
+	Digest string `json:"digest"`
+}
+
+type releaseDetail struct {
+	TagName string         `json:"tag_name"`
+	Assets  []releaseAsset `json:"assets"`
+}
+
+// githubAPIBase / githubDownloadBase 是可被测试替换的端点前缀。
+//
+// 生产取值固定指向 GitHub；用例把它们指到 httptest 服务器，
+// 从而在完全离线的环境下覆盖"摘要匹配 / 摘要不符 / 无摘要"三条路径。
+var (
+	githubAPIBase      = "https://api.github.com"
+	githubDownloadBase = "https://github.com"
+)
+
+// ErrCoreChecksumUnavailable 表示既拿不到 release 资产摘要，也没有 .sha256 侧车。
+//
+// 这不是"暂时性故障"，而是拒绝安装的终态：无法校验完整性的内核二进制
+// 一律不落盘。
+var ErrCoreChecksumUnavailable = errors.New("sing-box archive integrity could not be verified")
+
+// ErrCoreChecksumMismatch 表示下载内容与权威摘要不一致。
+var ErrCoreChecksumMismatch = errors.New("sing-box archive sha256 mismatch")
+
 type ServerService struct {
 	coreService CoreService
 }
@@ -172,7 +205,7 @@ func (s *ServerService) GetStatus(lastStatus *Status) *Status {
 
 // GetCoreVersions 拉取 SagerNet/sing-box 的最新 release 列表。
 func (s *ServerService) GetCoreVersions() ([]string, error) {
-	const releasesURL = "https://api.github.com/repos/SagerNet/sing-box/releases"
+	releasesURL := githubAPIBase + "/repos/SagerNet/sing-box/releases"
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Get(releasesURL)
 	if err != nil {
@@ -265,10 +298,9 @@ func newDownloadClient() *http.Client {
 //   - 归档写入 os.CreateTemp 生成的临时文件，绝不用用户可控的相对路径；
 //   - HTTP 客户端带超时且限制重定向目标主机。
 //
-// 下载后会尽力尝试 SHA256 校验：
-//   - 若 release 提供了 `{archive}.sha256` 侧车文件，则必须一致；不一致直接失败。
-//   - 若 checksum 文件不存在（HTTP 404），则告警后继续（best-effort，避免阻断旧版）；
-//     此时日志明确写明"未校验"，不谎称已验证。
+// 完整性校验是强制的，不存在"校验不了就放行"的分支：
+// 面板以 root 运行，未经校验的内核二进制等同于远程代码执行入口。
+// 详见 verifyCoreChecksum。
 func (s *ServerService) UpdateCore(version string) error {
 	version, err := ValidateCoreVersion(version)
 	if err != nil {
@@ -304,8 +336,14 @@ func coreArchiveName(version string) string {
 
 // coreDownloadURL 返回归档下载地址。version 必须已通过校验。
 func coreDownloadURL(version string) string {
-	return fmt.Sprintf("https://github.com/SagerNet/sing-box/releases/download/%s/%s",
-		url.PathEscape(version), url.PathEscape(coreArchiveName(version)))
+	return fmt.Sprintf("%s/SagerNet/sing-box/releases/download/%s/%s",
+		githubDownloadBase, url.PathEscape(version), url.PathEscape(coreArchiveName(version)))
+}
+
+// coreReleaseAPIURL 返回该 tag 的 GitHub Releases API 地址。
+func coreReleaseAPIURL(version string) string {
+	return fmt.Sprintf("%s/repos/SagerNet/sing-box/releases/tags/%s",
+		githubAPIBase, url.PathEscape(version))
 }
 
 // downloadCore 下载归档并同时计算 SHA256，返回（临时文件路径，sha256 hex，错误）。
@@ -335,46 +373,140 @@ func (s *ServerService) downloadCore(version string) (string, string, error) {
 	return file.Name(), hex.EncodeToString(hasher.Sum(nil)), nil
 }
 
-// verifyCoreChecksum 尽力校验归档 SHA256。
+// verifyCoreChecksum 强制校验归档 SHA256，无法完成校验即视为失败。
 //
-// 优先级：
-//  1. `{archive_url}.sha256` 侧车文件：格式通常为 `<hex>  <filename>` 或纯 `<hex>`。
-//  2. 若 404 则判定 release 未提供 checksum，记录 warning 并放行（明确标注未校验）。
-//  3. 其他下载错误视为临时故障，同样放行（不影响升级操作本身）。
+// 为什么必须 fail-closed：这个归档解压出来的二进制会被面板以 root 身份执行。
+// 历史实现在 release 缺少 `.sha256` 侧车时只打一行 warning 就继续安装——
+// 而 sing-box 从来不发布侧车文件，所以那条"尽力校验"分支等于永远不校验：
+// 任何能中间人劫持 objects.githubusercontent.com 的攻击者都能换掉内核。
+//
+// 校验源按优先级：
+//  1. GitHub Releases API 的资产 digest 字段（形如 "sha256:<hex>"）。
+//     这是 sing-box 唯一提供的权威摘要，与归档走不同主机、不同 TLS 会话。
+//  2. `{archive_url}.sha256` 侧车文件，兼容将来可能补上侧车的 release，
+//     以及自建镜像。
+//
+// 两者都拿不到 → 返回 ErrCoreChecksumUnavailable，调用方不得解压安装。
 func (s *ServerService) verifyCoreChecksum(version, archivePath, computedSum string) error {
-	checksumURL := coreDownloadURL(version) + ".sha256"
+	digest, apiErr := fetchReleaseAssetDigest(version, coreArchiveName(version))
+	if apiErr == nil && digest != "" {
+		if !strings.EqualFold(digest, computedSum) {
+			return fmt.Errorf("%w: release asset digest %s, downloaded %s",
+				ErrCoreChecksumMismatch, digest, computedSum)
+		}
+		logger.Infof("sing-box %s verified against the GitHub release asset digest (sha256=%s)", version, computedSum)
+		return nil
+	}
+	if apiErr != nil {
+		logger.Warningf("sing-box %s: release asset digest unavailable (%v), falling back to the .sha256 sidecar", version, apiErr)
+	}
 
+	sidecar, sidecarErr := fetchChecksumSidecar(coreDownloadURL(version) + ".sha256")
+	if sidecarErr == nil && sidecar != "" {
+		if !strings.EqualFold(sidecar, computedSum) {
+			return fmt.Errorf("%w: sidecar says %s, downloaded %s",
+				ErrCoreChecksumMismatch, sidecar, computedSum)
+		}
+		logger.Infof("sing-box %s verified against the .sha256 sidecar (sha256=%s)", version, computedSum)
+		return nil
+	}
+
+	// 到这里说明两条校验路径都没能给出一个可比对的摘要。
+	// 明确拒绝，并把两边的原因都写进错误信息，便于运维判断是网络问题还是资产缺失。
+	return fmt.Errorf("%w for %s (downloaded sha256=%s): release API: %v; sidecar: %v",
+		ErrCoreChecksumUnavailable, version, computedSum,
+		orNoDigest(apiErr), orNoDigest(sidecarErr))
+}
+
+// orNoDigest 把"请求成功但没有摘要"的 nil error 表述为一句人话。
+func orNoDigest(err error) error {
+	if err == nil {
+		return errors.New("no digest published")
+	}
+	return err
+}
+
+// fetchReleaseAssetDigest 从 GitHub Releases API 取出指定资产的 sha256 摘要。
+//
+// 返回 ("", nil) 表示接口正常但该资产没有 digest 字段（老 release 尚未回填）。
+// 复用 newDownloadClient：同一份主机白名单、同样只允许 https 重定向。
+func fetchReleaseAssetDigest(version, assetName string) (string, error) {
+	req, err := http.NewRequest(http.MethodGet, coreReleaseAPIURL(version), nil)
+	if err != nil {
+		return "", err
+	}
+	// GitHub API 拒绝没有 User-Agent 的请求，并用 Accept 头锁定响应 schema 版本。
+	req.Header.Set("Accept", "application/vnd.github+json")
+	req.Header.Set("User-Agent", "x-ui")
+
+	resp, err := newDownloadClient().Do(req)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("release API returned HTTP %d", resp.StatusCode)
+	}
+
+	// 上限 8 MiB：sing-box 的 release 资产列表约几十 KB，留足余量的同时挡住异常响应。
+	body, err := io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+	if err != nil {
+		return "", err
+	}
+	detail := &releaseDetail{}
+	if err := json.Unmarshal(body, detail); err != nil {
+		return "", fmt.Errorf("release API response is not valid JSON: %w", err)
+	}
+	for _, asset := range detail.Assets {
+		if asset.Name != assetName {
+			continue
+		}
+		digest := parseSHA256Digest(asset.Digest)
+		if digest == "" {
+			return "", fmt.Errorf("asset %s carries no usable sha256 digest (%q)", assetName, asset.Digest)
+		}
+		return digest, nil
+	}
+	return "", fmt.Errorf("release %s has no asset named %s", version, assetName)
+}
+
+// parseSHA256Digest 解析 GitHub 的 "sha256:<hex>" 摘要串。
+// 非 sha256 算法或长度不对时返回空串——绝不把无法判定的值当成通过。
+func parseSHA256Digest(raw string) string {
+	value := strings.TrimSpace(strings.ToLower(raw))
+	value = strings.TrimPrefix(value, "sha256:")
+	if len(value) != 64 {
+		return ""
+	}
+	if _, err := hex.DecodeString(value); err != nil {
+		return ""
+	}
+	return value
+}
+
+// fetchChecksumSidecar 读取 `<archive>.sha256` 侧车文件里的第一个 sha256。
+// 返回 ("", nil) 表示 404，即 release 未提供侧车。
+func fetchChecksumSidecar(checksumURL string) (string, error) {
 	resp, err := newDownloadClient().Get(checksumURL)
 	if err != nil {
-		logger.Warningf("sing-box archive NOT verified: fetch checksum failed: %v", err)
-		return nil
+		return "", err
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusNotFound {
-		logger.Warningf("sing-box archive NOT verified: release %s publishes no .sha256 sidecar (sha256=%s)", version, computedSum)
-		return nil
+		return "", nil
 	}
 	if resp.StatusCode != http.StatusOK {
-		logger.Warningf("sing-box archive NOT verified: checksum fetch returned HTTP %d", resp.StatusCode)
-		return nil
+		return "", fmt.Errorf("sidecar fetch returned HTTP %d", resp.StatusCode)
 	}
-
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	if err != nil {
-		logger.Warningf("sing-box archive NOT verified: read checksum body failed: %v", err)
-		return nil
+		return "", err
 	}
-
-	expected := parseFirstHex(string(body))
-	if expected == "" {
-		logger.Warningf("sing-box archive NOT verified: checksum body has no hex sha256")
-		return nil
+	sum := parseFirstHex(string(body))
+	if sum == "" {
+		return "", errors.New("sidecar body carries no hex sha256")
 	}
-	if !strings.EqualFold(expected, computedSum) {
-		return fmt.Errorf("sing-box archive sha256 mismatch: expected %s, got %s", expected, computedSum)
-	}
-	logger.Infof("sing-box archive %s sha256 verified", archivePath)
-	return nil
+	return sum, nil
 }
 
 // parseFirstHex 从 checksum 文件内容中提取第一个 64 位十六进制串（SHA256）。
