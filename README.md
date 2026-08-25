@@ -191,8 +191,27 @@ go test -race ./...    # CI 使用的形式
 ```
 
 测试全程使用 `t.TempDir()` 下的临时 SQLite 数据库（经 `XUI_DB_PATH` 注入），
-不会读写 `/etc/x-ui`。SQLite 驱动为纯 Go 的 `glebarez/sqlite`，
-因此 `CGO_ENABLED=0` 也能构建（`-race` 仍需 cgo）。
+不会读写 `/etc/x-ui`，也不需要 sing-box 二进制。SQLite 驱动为纯 Go 的
+`glebarez/sqlite`，因此 `CGO_ENABLED=0` 也能构建（`-race` 仍需 cgo）。
+
+端到端用例（`web/e2e_*_test.go`）把真正的 gin 引擎架在 `httptest` 上，
+中间件栈与内嵌模板都与生产一致，覆盖：
+
+| 场景 | 关键断言 |
+| --- | --- |
+| 首次启动 | 随机口令、bcrypt 落库、公告只打印一次 |
+| 登录 | 缺失 / 错配 / 跨会话的 CSRF token 一律 403 |
+| 限流 | 连续失败锁定；伪造 `X-Forwarded-For` 换不到新分桶 |
+| 入站 CRUD | 保留键、非对象 settings、坏端口、Reality 密钥错配均被拒且不落库 |
+| 设置 | 非法时区 / 端口 / CIDR 被拒，且不留下部分写入 |
+| 登出 | 删除 cookie 的 Path 与登录时一致（含自定义 basePath） |
+| 探针 | `/healthz`、`/readyz`（`?core=1` 时纳入内核状态）无需认证且不泄露信息 |
+| i18n | `lang` cookie 优先于 `Accept-Language`；并发混合语言请求不串台 |
+| 生命周期 | 优雅停机不超时；端口被占时 `Start` 失败也能干净收场 |
+
+单元测试另外用 golden 文件锁定 14 种协议的 sing-box 配置序列化结果，
+并对照 `protocol_spec.js` 校验前后端协议表一致——这两份表分处 Go 与 JS，
+没有编译期约束。
 
 # 版本历史
 
@@ -231,7 +250,9 @@ go test -race ./...    # CI 使用的形式
 - **Medium**：`Server.Stop` 不再把已 cancel 的 context 传给 `httpServer.Shutdown`；改用独立的 10s 超时 context，排空后才 cancel
 - **修复**：Reality 分享链接 —— `RealityBlock` 缺 `public_key` 导致 `pbk` 恒为空、客户端全部握手失败；补齐模型与表单字段，新增 `POST /xui/api/reality/keypair` 服务端成对生成，并在写库时校验 `public_key` 由 `private_key` 派生
 - **修复**：内核重启防抖循环加入指数退避（10s → 封顶 10min，成功即复位），避免配置永久非法时每 10 秒重启一次
+- **修复**：`//go:embed html/*` 会跳过以 `_` 开头的文件，`html/xui/form/_tls.html` 与 `_transport.html` 因此没进二进制；release 构建里每个协议表单都在渲染时报 `no such template "form/_tls"`，入站页返回 200 但内容为空（开发模式从磁盘读模板，本地看不出来）。改用 `all:` 前缀，并补两条护栏用例
 - **修复**：`master` → `main` 分支引用（`x-ui.sh`、`README.md`）
+- **清理**：`web/service/config.json` 与 `core/singbox.DefaultTemplate` 是逐字节相同的两份默认模板，改为单一来源；`autp_https_conn.go` 更名为 `auto_https_conn.go`
 - **新增**：`XUI_DB_PATH` / `XUI_DB_FOLDER` 环境变量覆盖数据库路径
 - **新增**：`/healthz`、`/readyz` 探针
 - **新增**：审计日志改用 `log/slog` JSON handler，字段不可被用户输入伪造；新增结构化访问日志中间件
