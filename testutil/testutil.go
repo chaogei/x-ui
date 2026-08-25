@@ -9,6 +9,7 @@ package testutil
 import (
 	"bytes"
 	"path/filepath"
+	"regexp"
 	"testing"
 
 	"gorm.io/gorm"
@@ -45,4 +46,25 @@ func InitDB(t *testing.T) (*gorm.DB, *bytes.Buffer) {
 func DBPath(t *testing.T) string {
 	t.Helper()
 	return filepath.Join(t.TempDir(), "x-ui.db")
+}
+
+var (
+	bannerUsername = regexp.MustCompile(`username:\s*(\S+)`)
+	bannerPassword = regexp.MustCompile(`password:\s*(\S+)`)
+)
+
+// ParseInitialCredentials 从首启公告横幅里解析出用户名与随机口令。
+//
+// 这是测试能登录新面板的唯一途径，也正是真实运维的途径
+// （docker logs / journalctl）：口令只以 bcrypt 形式落库，事后无从取回。
+func ParseInitialCredentials(t *testing.T, banner *bytes.Buffer) (username, password string) {
+	t.Helper()
+
+	text := banner.String()
+	u := bannerUsername.FindStringSubmatch(text)
+	p := bannerPassword.FindStringSubmatch(text)
+	if u == nil || p == nil {
+		t.Fatalf("first-boot banner did not announce credentials, got:\n%s", text)
+	}
+	return u[1], p[1]
 }
