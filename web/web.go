@@ -31,13 +31,18 @@ import (
 	"github.com/robfig/cron/v3"
 )
 
-//go:embed assets/*
+//go:embed all:assets
 var assetsFS embed.FS
 
-//go:embed html/*
+// 必须用 all: 前缀：默认的 embed 模式会跳过以 `_` 或 `.` 开头的文件，
+// 而 html/xui/form/ 下的 _tls.html 与 _transport.html 正是这种命名。
+// 少了它们，release 构建里每个协议表单都会因 `no such template "form/_tls"`
+// 渲染失败，入站页返回 200 但内容为空——开发模式（从磁盘读模板）看不出来。
+//
+//go:embed all:html
 var htmlFS embed.FS
 
-//go:embed translation/*
+//go:embed all:translation
 var i18nFS embed.FS
 
 var startTime = time.Now()
