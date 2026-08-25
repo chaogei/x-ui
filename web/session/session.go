@@ -42,12 +42,23 @@ func IsLogin(c *gin.Context) bool {
 	return GetLoginUser(c) != nil
 }
 
+// ClearSession 清空登录态并让浏览器立即删除 session cookie。
+//
+// Path 必须与登录时下发 cookie 所用的 basePath 完全一致：
+// 浏览器按 (name, domain, path) 三元组定位 cookie，历史实现固定写 "/"，
+// 在自定义 basePath（例如 /panel/）部署下删除的是一个根本不存在的 cookie，
+// 真正的 session cookie 原封不动地留在浏览器里，登出形同虚设。
 func ClearSession(c *gin.Context) {
 	s := sessions.Default(c)
 	s.Clear()
+	path := c.GetString("base_path")
+	if path == "" {
+		path = "/"
+	}
 	s.Options(sessions.Options{
-		Path:   "/",
-		MaxAge: -1,
+		Path:     path,
+		HttpOnly: true,
+		MaxAge:   -1,
 	})
 	s.Save()
 }

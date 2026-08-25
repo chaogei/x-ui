@@ -1,74 +1,91 @@
 package service
 
 import (
-	"encoding/json"
-	"net"
-	"strings"
-	"time"
+	"io"
+	"log/slog"
+	"os"
+	"sync"
 
 	"github.com/gin-gonic/gin"
 
-	"x-ui/logger"
 	"x-ui/web/session"
 )
 
 // 审计事件名（面板所有对安全/合规敏感的操作用同一套枚举常量，
-// 便于 journald / 日志采集端用 grep "AUDIT.*event=..." 做精确过滤）。
+// 便于 journald / 日志采集端用 grep "AUDIT " 做精确过滤）。
 const (
-	EventLoginSuccess   = "login_success"
-	EventLoginFail      = "login_fail"
-	EventLoginLocked    = "login_locked"
-	EventLogout         = "logout"
-	EventUserUpdate     = "user_update"
-	EventInboundAdd     = "inbound_add"
-	EventInboundUpdate  = "inbound_update"
-	EventInboundDelete  = "inbound_delete"
-	EventSettingUpdate  = "setting_update"
-	EventPanelRestart   = "panel_restart"
+	EventLoginSuccess  = "login_success"
+	EventLoginFail     = "login_fail"
+	EventLoginLocked   = "login_locked"
+	EventLogout        = "logout"
+	EventUserUpdate    = "user_update"
+	EventInboundAdd    = "inbound_add"
+	EventInboundUpdate = "inbound_update"
+	EventInboundDelete = "inbound_delete"
+	EventSettingUpdate = "setting_update"
+	EventPanelRestart  = "panel_restart"
 )
+
+// auditPrefix 让审计行在混合日志流里仍能被 grep 精确定位。
+const auditPrefix = "AUDIT "
+
+// prefixWriter 在每条 slog JSON 记录前加上固定前缀。
+// slog.JSONHandler 保证一次 Write 恰好对应一条完整记录（含结尾换行）。
+type prefixWriter struct {
+	mu     sync.Mutex
+	w      io.Writer
+	prefix string
+}
+
+func (p *prefixWriter) Write(b []byte) (int, error) {
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if _, err := io.WriteString(p.w, p.prefix); err != nil {
+		return 0, err
+	}
+	return p.w.Write(b)
+}
+
+var (
+	auditMu     sync.RWMutex
+	auditSink   = &prefixWriter{w: os.Stderr, prefix: auditPrefix}
+	auditLogger = slog.New(slog.NewJSONHandler(auditSink, &slog.HandlerOptions{Level: slog.LevelInfo}))
+)
+
+// SetAuditOutput 替换审计日志的输出目标并返回旧值，供测试断言事件内容。
+func SetAuditOutput(w io.Writer) io.Writer {
+	auditMu.Lock()
+	defer auditMu.Unlock()
+	old := auditSink.w
+	auditSink.mu.Lock()
+	auditSink.w = w
+	auditSink.mu.Unlock()
+	return old
+}
 
 // Audit 写入一条结构化审计日志。
 //
-// 输出一行以 "AUDIT " 作为识别前缀的 JSON（写入同一 logger backend），
-// 不依赖独立文件或 DB，降低部署复杂度；若未来需要独立存储只需替换本函数即可。
+// 使用 stdlib log/slog 的 JSON handler：字段是真正的结构化键值对，
+// 不会因为用户提交的字符串里带引号/换行而破坏日志行（不可伪造成额外事件）。
 //
 // result 取值建议：ok / fail / locked；extra 承载事件私有上下文（如 inbound_id、reason）。
 func Audit(c *gin.Context, event, result string, extra map[string]interface{}) {
-	entry := map[string]interface{}{
-		"ts":     time.Now().UTC().Format(time.RFC3339),
-		"event":  event,
-		"result": result,
-		"ip":     clientIP(c),
+	attrs := []any{
+		slog.String("event", event),
+		slog.String("result", result),
+		slog.String("ip", ClientIP(c)),
 	}
 	if c != nil {
 		if user := session.GetLoginUser(c); user != nil {
-			entry["user"] = user.Username
-			entry["uid"] = user.Id
+			attrs = append(attrs, slog.String("user", user.Username), slog.Int("uid", user.Id))
 		}
 	}
 	for k, v := range extra {
-		entry[k] = v
+		attrs = append(attrs, slog.Any(k, v))
 	}
-	b, err := json.Marshal(entry)
-	if err != nil {
-		logger.Warningf("audit marshal failed: %v", err)
-		return
-	}
-	logger.Infof("AUDIT %s", b)
-}
 
-// clientIP 从 gin.Context 提取客户端 IP。与 controller.getRemoteIp 等价，
-// 此处避免反向依赖 controller 包，故本地实现一份。
-func clientIP(c *gin.Context) string {
-	if c == nil {
-		return ""
-	}
-	if v := c.GetHeader("X-Forwarded-For"); v != "" {
-		return strings.TrimSpace(strings.Split(v, ",")[0])
-	}
-	host, _, err := net.SplitHostPort(c.Request.RemoteAddr)
-	if err != nil {
-		return c.Request.RemoteAddr
-	}
-	return host
+	auditMu.RLock()
+	l := auditLogger
+	auditMu.RUnlock()
+	l.Info("audit", attrs...)
 }
