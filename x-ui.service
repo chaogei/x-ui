@@ -1,5 +1,6 @@
 [Unit]
 Description=x-ui Service
+Documentation=https://github.com/chaogei/x-ui
 After=network.target
 Wants=network.target
 
@@ -7,6 +8,31 @@ Wants=network.target
 Type=simple
 WorkingDirectory=/usr/local/x-ui/
 ExecStart=/usr/local/x-ui/x-ui
+Restart=on-failure
+RestartSec=5s
+
+# --- 沙箱加固 ---
+# 面板默认以 root 运行（sing-box 常需绑定 <1024 端口、读 /proc 网络统计）。
+# 以下指令即使在 root 下也生效，用于缩小被攻陷后的横向移动面。
+#
+# 若改为非 root 用户运行，绑定 <1024 端口需要额外加：
+#   AmbientCapabilities=CAP_NET_BIND_SERVICE
+#   CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+NoNewPrivileges=yes
+PrivateTmp=yes
+ProtectHome=yes
+ProtectSystem=strict
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictSUIDSGID=yes
+RestrictRealtime=yes
+LockPersonality=yes
+
+# ProtectSystem=strict 让整个文件系统只读，这里显式放开面板真正需要写的路径：
+#   /etc/x-ui         SQLite 数据库
+#   /usr/local/x-ui   bin/config.json（每次启动内核前重新生成）与内核二进制升级
+ReadWritePaths=/etc/x-ui /usr/local/x-ui
 
 [Install]
 WantedBy=multi-user.target

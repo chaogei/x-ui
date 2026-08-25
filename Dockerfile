@@ -2,9 +2,9 @@
 FROM golang:1.22-bookworm AS builder
 WORKDIR /src
 COPY . .
+# CGO_ENABLED=0：SQLite 驱动已换成纯 Go 的 glebarez/sqlite，不再需要 libsqlite3。
 # -trimpath   去本地路径；-s -w  去符号与调试信息；-buildid=  保证可复现。
-RUN go mod tidy && \
-    go build -trimpath -ldflags="-s -w -buildid=" -o x-ui main.go
+RUN CGO_ENABLED=0 go build -trimpath -ldflags="-s -w -buildid=" -o x-ui main.go
 
 # ---- Stage 2: 抓取 sing-box 内核二进制 ----
 FROM debian:12-slim AS singbox
@@ -15,7 +15,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends curl ca-certifi
         "https://github.com/SagerNet/sing-box/releases/download/v${SINGBOX_VERSION}/sing-box-${SINGBOX_VERSION}-linux-${TARGETARCH}.tar.gz" \
     && tar -xzf /tmp/sing-box.tar.gz -C /tmp \
     && cp /tmp/sing-box-${SINGBOX_VERSION}-linux-${TARGETARCH}/sing-box /usr/local/bin/sing-box \
-    && chmod +x /usr/local/bin/sing-box
+    && chmod 0700 /usr/local/bin/sing-box
 
 # ---- Stage 3: 运行时最小镜像 ----
 FROM debian:12-slim
@@ -25,5 +25,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates
 WORKDIR /root
 COPY --from=builder /src/x-ui /root/x-ui
 COPY --from=singbox /usr/local/bin/sing-box /root/bin/sing-box-linux-${TARGETARCH}
+# 数据库位置可通过 XUI_DB_PATH / XUI_DB_FOLDER 覆盖，默认 /etc/x-ui/x-ui.db。
+ENV XUI_DB_FOLDER=/etc/x-ui
 VOLUME [ "/etc/x-ui" ]
+EXPOSE 54321
+# 首次启动会生成随机管理员密码并打印到容器日志（docker logs x-ui）。
+HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
+    CMD ["/root/x-ui", "-v"]
 CMD [ "./x-ui" ]

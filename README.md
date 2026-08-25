@@ -18,13 +18,42 @@
 - 可自定义 sing-box 配置模板
 - 支持 https 访问面板（自备域名 + SSL 证书）
 - 支持一键 SSL 证书申请并自动续签
-- **多语言面板**：简体中文 / 繁体中文 / English 全量覆盖（跟随浏览器语言，cookie `lang` 可强制切换）
+- **多语言面板**：简体中文 / 繁体中文 / English 全量覆盖
+  （默认跟随浏览器 `Accept-Language`；侧边栏「语言」菜单写入 `lang` cookie 后以 cookie 为准）
+- **首次启动自动生成随机管理员密码**（bcrypt 存储，明文只打印一次）
+- **CSRF 防护**：所有非幂等接口强制校验 `X-CSRF-Token`
+- **健康探针**：`GET /healthz`（存活）、`GET /readyz`（数据库可达）
 - 更多高级配置，详见面板
+
+# 首次登录
+
+面板首次启动（数据库为空）时会用 `crypto/rand` 生成一个 20 位随机管理员密码，
+以 bcrypt 哈希入库，并把明文**只打印一次**到 stderr。取回方式：
+
+```bash
+# systemd 部署
+journalctl -u x-ui -n 50 | grep -A3 "初始管理员账号"
+
+# Docker 部署
+docker logs x-ui 2>&1 | grep -A3 "初始管理员账号"
+```
+
+用户名固定为 `admin`。登录后面板顶部会一直显示告警，直到你在
+「面板设置 → 用户设置」里改掉密码为止。
+
+忘记密码时重设：
+
+```bash
+/usr/local/x-ui/x-ui setting -username <新用户名> -password <新密码>
+```
+
+> 注意：`x-ui setting -show` 不会回显密码。数据库里只有 bcrypt 哈希，
+> 它既不能用来登录，也不该被打印到终端或运维日志。
 
 # 安装 & 升级
 
 ```bash
-bash <(curl -Ls https://raw.githubusercontent.com/chaogei/x-ui/master/install.sh)
+bash <(curl -Ls https://raw.githubusercontent.com/chaogei/x-ui/main/install.sh)
 ```
 
 脚本会自动从 [SagerNet/sing-box releases](https://github.com/SagerNet/sing-box/releases/latest)
@@ -67,7 +96,19 @@ docker run -itd --network=host \
   -v $PWD/cert/:/root/cert/ \
   --name x-ui --restart=unless-stopped \
   x-ui
+
+# 首次启动生成的管理员密码在容器日志里，只打印一次：
+docker logs x-ui
 ```
+
+数据库路径可用环境变量覆盖（容器/测试场景有用）：
+
+| 变量 | 说明 | 默认 |
+| --- | --- | --- |
+| `XUI_DB_PATH` | 数据库文件完整路径 | 空 |
+| `XUI_DB_FOLDER` | 数据库所在目录 | `/etc/x-ui` |
+| `XUI_DEBUG` | `true` 时开启调试模式（模板热加载、SQL 日志） | 空 |
+| `XUI_LOG_LEVEL` | `debug` / `info` / `warn` / `error` | `info` |
 
 ## SSL 证书申请
 
@@ -103,7 +144,98 @@ x-ui v1.0.0 移除了 Xray 内核与 v2-ui 迁移能力。
 首次启动时若检测到旧 Xray 格式的 `inbounds` 表，会自动重命名备份，
 新协议下的入站请在面板中重新创建并绑定至 sing-box。
 
+# 运维
+
+## 健康检查
+
+两个端点均无需登录、不返回任何机密信息：
+
+| 端点 | 语义 |
+| --- | --- |
+| `GET /healthz` | 进程存活即 200，不触碰数据库 |
+| `GET /readyz` | 数据库 Ping 通即 200 |
+| `GET /readyz?core=1` | 额外要求 sing-box 内核在运行 |
+| `GET /api/v1/health`、`GET /api/v1/ready` | 上面两者的别名 |
+
+自定义 `basePath` 时，这些路径在根路径与 basePath 下同时可用。
+
+## 反向代理与客户端 IP
+
+面板默认**不信任任何反向代理**：`X-Forwarded-For` / `X-Real-IP` 被完全忽略，
+客户端 IP 取 TCP 对端地址。登录失败限流与审计日志都基于这个判定，
+因此伪造请求头无法绕过锁定。
+
+若面板确实部署在 Nginx / Caddy / CDN 之后，在
+「面板设置 → 受信代理网段」填入前置代理的 CIDR（逗号分隔），此后才会沿 XFF 回溯。
+
+## 服务加固
+
+`x-ui.service` 默认启用 `NoNewPrivileges`、`ProtectSystem=strict`、
+`ProtectHome=yes`、`PrivateTmp=yes`，并通过 `ReadWritePaths` 只放开
+`/etc/x-ui` 与 `/usr/local/x-ui`。这些指令在 root 下同样生效。
+
+若改为非 root 用户运行，绑定 1024 以下端口需要额外补：
+
+```ini
+AmbientCapabilities=CAP_NET_BIND_SERVICE
+CapabilityBoundingSet=CAP_NET_BIND_SERVICE
+```
+
+# 开发
+
+```bash
+go build ./...
+go vet ./...
+go test ./...          # 全部用例，不需要 sing-box 二进制
+go test -race ./...    # CI 使用的形式
+```
+
+测试全程使用 `t.TempDir()` 下的临时 SQLite 数据库（经 `XUI_DB_PATH` 注入），
+不会读写 `/etc/x-ui`。SQLite 驱动为纯 Go 的 `glebarez/sqlite`，
+因此 `CGO_ENABLED=0` 也能构建（`-race` 仍需 cgo）。
+
 # 版本历史
+
+## v1.0.1（构建修复与安全加固）
+
+### 构建
+
+- **修复**：`web/entity/entity.go` 因 `err` 变量作用域错误无法编译，`AllSetting.CheckValid` 从未通过构建
+- **修复**：`go.sum` 缺失约 363 条目（新增 `golang.org/x/crypto` 时未 `go mod tidy`）
+- **移除**：`github.com/sagernet/sing-box` —— 声明为直接依赖但零 import
+- **修复**：`util/sys` 的 `//go:linkname HostProc` 指向 gopsutil **v3** 内部符号而项目已升到 v4，Linux 链接失败；改为自实现（`$HOST_PROC` / `/proc`），并删除配套的空 `a.s`
+- **变更**：SQLite 驱动 `mattn/go-sqlite3` → `glebarez/sqlite`（纯 Go），构建与发布不再需要 CGO
+- **新增**：`.github/workflows/ci.yml` —— push / PR 触发 build、vet、gofmt、tidy 校验与 `go test -race`
+
+### 安全
+
+- **Critical**：session secret 原由 `math/rand`（`UnixNano` 种子）在包初始化时生成；`util/random` 改用 `crypto/rand`，secret 改为首次使用时惰性生成并持久化
+- **Critical**：文件权限 —— `bin/config.json` 0777 → 0600；内核二进制 0777 → 0700；数据目录 `fs.ModeDir`（实为 0000）→ 0700；数据库文件 0600
+- **High**：`installCore` 的 `version` 未经校验即拼进下载 URL 与 `os.Create` 文件名；现按正则白名单校验、归档写入 `os.CreateTemp`、HTTP 客户端带超时且重定向限定 GitHub 主机
+- **High**：`install.sh` / `x-ui.sh` 移除全部 `--no-check-certificate`
+- **High**：不再播种 `admin/admin` 明文口令；首次启动生成 20 位 CSPRNG 随机密码（bcrypt 存储，明文只打印一次），并重新启用被 `v-if="false"` 写死隐藏的面板告警
+- **High**：`getRemoteIp` 与审计日志不再无条件信任 `X-Forwarded-For`；默认 `SetTrustedProxies(nil)`，新增 `webTrustedProxies` 设置项
+- **Low**：登出时清除 cookie 的 Path 与登录下发时一致（自定义 basePath 下原先根本没删掉）
+- **Low**：新增 CSP、`X-Content-Type-Options`、`Referrer-Policy`、`X-Frame-Options`，HTTPS 下补 HSTS
+- **Low**：显式 `tls.Config{MinVersion: tls.VersionTLS12}`
+- **Low**：`x-ui setting -show` 不再把 bcrypt 哈希当密码打印
+- **Low**：`x-ui.service` 增加 `NoNewPrivileges` / `ProtectSystem=strict` / `ProtectHome` / `PrivateTmp` / `ReadWritePaths`
+
+### 正确性
+
+- **Medium**：i18n localizer 由包级共享变量改为请求级；模板渲染改走 `web/render`（每请求 Clone 模板并重绑 FuncMap），消除并发请求语言串台
+- **Medium**：实现 README 早已声明的 `lang` cookie（优先级高于 `Accept-Language`），并在侧边栏加语言切换菜单
+- **Medium**：`jsonMsg` 的「成功 / 失败」后缀与各控制器操作名改走 i18n key
+- **Medium**：Telegram 通知在构造 bot 前先检查 `tgBotEnable`；bot 客户端缓存复用、带 10s 超时、`Debug` 跟随 `config.IsDebug()`；登录路径改异步投递
+- **Medium**：入站 Settings 在写库前校验（必须是 JSON 对象、禁止 `type`/`tag`/`listen`/`listen_port` 保留键），错误带字段名返回
+- **Medium**：`Server.Stop` 不再把已 cancel 的 context 传给 `httpServer.Shutdown`；改用独立的 10s 超时 context，排空后才 cancel
+- **修复**：Reality 分享链接 —— `RealityBlock` 缺 `public_key` 导致 `pbk` 恒为空、客户端全部握手失败；补齐模型与表单字段，新增 `POST /xui/api/reality/keypair` 服务端成对生成，并在写库时校验 `public_key` 由 `private_key` 派生
+- **修复**：内核重启防抖循环加入指数退避（10s → 封顶 10min，成功即复位），避免配置永久非法时每 10 秒重启一次
+- **修复**：`master` → `main` 分支引用（`x-ui.sh`、`README.md`）
+- **新增**：`XUI_DB_PATH` / `XUI_DB_FOLDER` 环境变量覆盖数据库路径
+- **新增**：`/healthz`、`/readyz` 探针
+- **新增**：审计日志改用 `log/slog` JSON handler，字段不可被用户输入伪造；新增结构化访问日志中间件
+- **新增**：完整测试套件（单元 + httptest E2E + 并发/竞态），此前仓库零测试文件
 
 ## v1.0.0（sing-box 单内核重构）
 
@@ -119,7 +251,7 @@ x-ui v1.0.0 移除了 Xray 内核与 v2-ui 迁移能力。
 - **重构**：`component/inbound_info.html` 信息展示按新协议重写
 - **移除**：`v2ui/` 包与 `x-ui v2-ui` 子命令（旧版 Xray schema 迁移已不适用）
 - **移除**：`form/stream/`、`form/tls_settings.html`（sing-box 无独立 stream/TLS 对象，合入协议表单）
-- **兼容**：保留 `/getXrayVersion`、`/installXray/:version` HTTP 路径以降低前端改造成本；内部实际调用 sing-box 版本获取与安装
+- **接口**：内核相关接口路径为 `POST /server/getCoreVersion` 与 `POST /server/installCore/:version`（Xray 时代的 `/getXrayVersion`、`/installXray/:version` 已随内核一并移除，未保留别名）
 - **新增**：面板 UI 全量 i18n 化——扫描并替换 26 个 HTML 模板共 ~210 处硬编码中文为 `{{ i18n "key" }}`，覆盖侧边栏、首页状态卡、入站列表、14 个协议子表单、TLS/transport/sniffing 公共块、信息弹窗、设置页全部 5 个 tab 与所有确认对话框
 - **新增**：`web/translation/translate.{zh_Hans,zh_Hant,en_US}.toml` 三语词典同步扩充 91 个 key（按功能分组带注释），原有中文字面量 0 残留（仅 HTML/JS 注释保留作为架构文档）
 - **规范**：建立 i18n key 命名规范 `<模块>_<字段>[_ph|_desc|_hint]`（如 `proto_password` / `setting_web_listen_desc` / `sniff_timeout_ph`），后续新增文案按同一约定落 key

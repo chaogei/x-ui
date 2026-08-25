@@ -83,22 +83,30 @@ install_base() {
 
 #This function will be called when user installed x-ui out of sercurity
 config_after_install() {
-    echo -e "${yellow}出于安全考虑，安装/更新完成后需要强制修改端口与账户密码${plain}"
-    read -p "确认是否继续?[y/n]": config_confirm
+    echo -e "${yellow}出于安全考虑，安装/更新完成后建议立即设置端口与账户密码${plain}"
+    read -r -p "确认是否继续?[y/n]: " config_confirm
     if [[ x"${config_confirm}" == x"y" || x"${config_confirm}" == x"Y" ]]; then
-        read -p "请设置您的账户名:" config_account
-        echo -e "${yellow}您的账户名将设定为:${config_account}${plain}"
-        read -p "请设置您的账户密码:" config_password
-        echo -e "${yellow}您的账户密码将设定为:${config_password}${plain}"
-        read -p "请设置面板访问端口:" config_port
-        echo -e "${yellow}您的面板访问端口将设定为:${config_port}${plain}"
-        echo -e "${yellow}确认设定,设定中${plain}"
-        /usr/local/x-ui/x-ui setting -username ${config_account} -password ${config_password}
-        echo -e "${yellow}账户密码设定完成${plain}"
-        /usr/local/x-ui/x-ui setting -port ${config_port}
-        echo -e "${yellow}面板端口设定完成${plain}"
+        read -r -p "请设置您的账户名: " config_account
+        echo -e "${yellow}您的账户名将设定为: ${config_account}${plain}"
+        # -s：不回显密码，避免明文出现在终端、录屏与 tmux 回滚缓冲里。
+        read -r -s -p "请设置您的账户密码: " config_password
+        echo
+        if [[ -z "${config_password}" ]]; then
+            echo -e "${red}密码为空，已跳过账户设置${plain}"
+        else
+            # 全部展开加引号：密码中的空格、* 、$ 等字符不会被分词或通配符展开。
+            /usr/local/x-ui/x-ui setting -username "${config_account}" -password "${config_password}"
+            echo -e "${yellow}账户密码设定完成${plain}"
+        fi
+        read -r -p "请设置面板访问端口: " config_port
+        if [[ -n "${config_port}" ]]; then
+            echo -e "${yellow}您的面板访问端口将设定为: ${config_port}${plain}"
+            /usr/local/x-ui/x-ui setting -port "${config_port}"
+            echo -e "${yellow}面板端口设定完成${plain}"
+        fi
     else
-        echo -e "${red}已取消,所有设置项均为默认设置,请及时修改${plain}"
+        echo -e "${yellow}已跳过。首次启动时面板会自动生成一个随机管理员密码，${plain}"
+        echo -e "${yellow}并打印到日志中，使用 ${green}journalctl -u x-ui -n 50${yellow} 查看。${plain}"
     fi
 }
 
@@ -124,7 +132,7 @@ install_x-ui() {
             exit 1
         fi
         echo -e "检测到 x-ui 最新版本：${last_version}，开始安装"
-        wget -N --no-check-certificate -O /usr/local/x-ui-linux-${arch}.tar.gz "${MIRROR}https://github.com/chaogei/x-ui/releases/download/${last_version}/x-ui-linux-${arch}.tar.gz"
+        wget -N -O /usr/local/x-ui-linux-${arch}.tar.gz "${MIRROR}https://github.com/chaogei/x-ui/releases/download/${last_version}/x-ui-linux-${arch}.tar.gz"
         if [[ $? -ne 0 ]]; then
             echo -e "${red}下载 x-ui 失败，请确保你的服务器能够下载 Github 的文件（或使用 MIRROR=https://ghproxy.com/ 重试）${plain}"
             exit 1
@@ -133,7 +141,7 @@ install_x-ui() {
         last_version=$1
         url="${MIRROR}https://github.com/chaogei/x-ui/releases/download/${last_version}/x-ui-linux-${arch}.tar.gz"
         echo -e "开始安装 x-ui v$1"
-        wget -N --no-check-certificate -O /usr/local/x-ui-linux-${arch}.tar.gz "${url}"
+        wget -N -O /usr/local/x-ui-linux-${arch}.tar.gz "${url}"
         if [[ $? -ne 0 ]]; then
             echo -e "${red}下载 x-ui v$1 失败，请确保此版本存在${plain}"
             exit 1
@@ -161,7 +169,7 @@ install_x-ui() {
         singbox_pkg="sing-box-${singbox_ver}-linux-${arch}.tar.gz"
         singbox_url="${MIRROR}https://github.com/SagerNet/sing-box/releases/download/${singbox_tag}/${singbox_pkg}"
         echo -e "正在下载 sing-box ${singbox_tag}..."
-        wget -N --no-check-certificate -O /tmp/${singbox_pkg} "${singbox_url}"
+        wget -N -O /tmp/${singbox_pkg} "${singbox_url}"
         if [[ $? -ne 0 ]]; then
             echo -e "${red}下载 sing-box 失败${plain}"
             exit 1
@@ -172,16 +180,16 @@ install_x-ui() {
     fi
     chmod +x bin/sing-box-linux-${arch}
     cp -f x-ui.service /etc/systemd/system/
-    wget --no-check-certificate -O /usr/bin/x-ui "${MIRROR}https://raw.githubusercontent.com/chaogei/x-ui/main/x-ui.sh"
+    wget -O /usr/bin/x-ui "${MIRROR}https://raw.githubusercontent.com/chaogei/x-ui/main/x-ui.sh"
     chmod +x /usr/local/x-ui/x-ui.sh
     chmod +x /usr/bin/x-ui
+    # 数据目录只允许 root 访问：里面是 bcrypt 哈希与 session secret。
+    mkdir -p /etc/x-ui
+    chmod 700 /etc/x-ui
     config_after_install
-    #echo -e "如果是全新安装，默认网页端口为 ${green}54321${plain}，用户名和密码默认都是 ${green}admin${plain}"
-    #echo -e "请自行确保此端口没有被其他程序占用，${yellow}并且确保 54321 端口已放行${plain}"
-    #    echo -e "若想将 54321 修改为其它端口，输入 x-ui 命令进行修改，同样也要确保你修改的端口也是放行的"
-    #echo -e ""
-    #echo -e "如果是更新面板，则按你之前的方式访问面板"
-    #echo -e ""
+    echo -e "如果是全新安装，默认网页端口为 ${green}54321${plain}，请确保该端口未被占用且已放行。"
+    echo -e "若安装时未设置账号，面板会在首次启动时生成一个随机管理员密码并写入日志："
+    echo -e "  ${green}journalctl -u x-ui -n 50${plain}"
     systemctl daemon-reload
     systemctl enable x-ui
     systemctl start x-ui

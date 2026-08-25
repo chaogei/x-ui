@@ -24,16 +24,10 @@ jobs:
         include:
           - arch: amd64
             goarch: amd64
-            cc: ""
-            apt: ""
           - arch: arm64
             goarch: arm64
-            cc: "aarch64-linux-gnu-gcc"
-            apt: "gcc-aarch64-linux-gnu"
           - arch: s390x
             goarch: s390x
-            cc: "s390x-linux-gnu-gcc"
-            apt: "gcc-s390x-linux-gnu"
     name: build x-ui ${{ matrix.arch }}
     runs-on: ubuntu-latest
     steps:
@@ -44,21 +38,14 @@ jobs:
         with:
           go-version: ${{ env.GO_VERSION }}
 
-      - name: Install cross-compile toolchain
-        if: matrix.apt != ''
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y ${{ matrix.apt }}
-
+      # SQLite 驱动改为纯 Go 的 glebarez/sqlite 后不再需要 cgo，
+      # 交叉编译也不用装 gcc-aarch64 / gcc-s390x 工具链。
       - name: Build x-ui
         run: |
           set -euo pipefail
-          export CGO_ENABLED=1
+          export CGO_ENABLED=0
           export GOOS=linux
           export GOARCH=${{ matrix.goarch }}
-          if [ -n "${{ matrix.cc }}" ]; then
-            export CC=${{ matrix.cc }}
-          fi
           go build ${BUILD_FLAGS} -ldflags="${LD_FLAGS}" -o xui-release -v main.go
 
       - name: Package release tarball
