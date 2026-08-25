@@ -25,6 +25,20 @@
         <span>Github</span>
     </a-menu-item>
 </a-sub-menu>
+<a-sub-menu>
+    <template slot="title">
+        <a-icon type="global"></a-icon>
+        <span>{{ i18n "language" }}</span>
+    </template>
+    <!--
+      语言切换写入 `lang` cookie；后端 web/locale 中间件以它为最高优先级，
+      高于浏览器 Accept-Language。key 前缀 lang: 由下方 @click 处理器识别。
+    -->
+    <a-menu-item key="lang:">{{ i18n "lang_follow_browser" }}</a-menu-item>
+    {{ range .languages }}
+    <a-menu-item key="lang:{{ .Code }}">{{ .Name }}</a-menu-item>
+    {{ end }}
+</a-sub-menu>
 <a-menu-item key="{{ .base_path }}logout">
     <a-icon type="logout"></a-icon>
     <span>{{ i18n "logout" }}</span>
@@ -35,7 +49,7 @@
 {{define "commonSider"}}
 <a-layout-sider id="sider" collapsible breakpoint="md" collapsed-width="0">
     <a-menu theme="dark" mode="inline" :selected-keys="['{{ .request_uri }}']"
-            @click="({key}) => key.startsWith('http') ? window.open(key) : location.href = key">
+            @click="({key}) => handleSiderClick(key)">
         {{template "menuItems" .}}
     </a-menu>
 </a-layout-sider>
@@ -46,11 +60,34 @@
         <a-icon :type="siderDrawer.visible ? 'close' : 'menu-fold'"></a-icon>
     </div>
     <a-menu theme="light" mode="inline" :selected-keys="['{{ .request_uri }}']"
-        @click="({key}) => key.startsWith('http') ? window.open(key) : location.href = key">
+        @click="({key}) => handleSiderClick(key)">
         {{template "menuItems" .}}
     </a-menu>
 </a-drawer>
 <script>
+
+    // setLang 写入/清除 `lang` cookie 并刷新页面。
+    // 空值表示"跟随浏览器"，此时删除 cookie 让后端回落到 Accept-Language。
+    function setLang(code) {
+        const basePath = '{{ .base_path }}';
+        if (code) {
+            const oneYear = 365 * 24 * 60 * 60;
+            document.cookie = `lang=${encodeURIComponent(code)};path=${basePath};max-age=${oneYear};samesite=lax`;
+        } else {
+            document.cookie = `lang=;path=${basePath};max-age=0;samesite=lax`;
+        }
+        location.reload();
+    }
+
+    function handleSiderClick(key) {
+        if (key.startsWith('lang:')) {
+            setLang(key.slice('lang:'.length));
+        } else if (key.startsWith('http')) {
+            window.open(key);
+        } else {
+            location.href = key;
+        }
+    }
 
     const siderDrawer = {
         visible: false,

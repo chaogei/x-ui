@@ -4,6 +4,7 @@ import (
 	"context"
 	"crypto/tls"
 	"embed"
+	"errors"
 	"html/template"
 	"io"
 	"io/fs"
@@ -18,17 +19,16 @@ import (
 	"x-ui/util/common"
 	"x-ui/web/controller"
 	"x-ui/web/job"
+	"x-ui/web/locale"
 	"x-ui/web/middleware"
 	"x-ui/web/network"
+	"x-ui/web/render"
 	"x-ui/web/service"
 
-	"github.com/BurntSushi/toml"
 	"github.com/gin-contrib/sessions"
 	"github.com/gin-contrib/sessions/cookie"
 	"github.com/gin-gonic/gin"
-	"github.com/nicksnyder/go-i18n/v2/i18n"
 	"github.com/robfig/cron/v3"
-	"golang.org/x/text/language"
 )
 
 //go:embed assets/*
@@ -41,6 +41,9 @@ var htmlFS embed.FS
 var i18nFS embed.FS
 
 var startTime = time.Now()
+
+// shutdownTimeout 是 HTTP 服务优雅停机的等待上限。
+const shutdownTimeout = 10 * time.Second
 
 type wrapAssetsFS struct {
 	embed.FS
@@ -109,7 +112,7 @@ func NewServer() *Server {
 }
 
 // isHTTPS 根据 settingService 中的证书配置判定面板是否运行在 HTTPS 模式。
-// 用于驱动 session cookie 的 Secure 属性；读取失败时保守返回 false。
+// 用于驱动 session cookie 的 Secure 属性与 HSTS 头；读取失败时保守返回 false。
 func (s *Server) isHTTPS() bool {
 	cert, _ := s.settingService.GetCertFile()
 	key, _ := s.settingService.GetKeyFile()
@@ -167,7 +170,14 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 		gin.SetMode(gin.ReleaseMode)
 	}
 
-	engine := gin.Default()
+	engine := gin.New()
+	engine.Use(gin.Recovery())
+	// 访问日志：只记录方法/路径/状态/耗时/客户端 IP，绝不记录请求体（登录表单含密码）。
+	engine.Use(middleware.AccessLog())
+
+	if err := s.applyTrustedProxies(engine); err != nil {
+		return nil, err
+	}
 
 	secret, err := s.settingService.GetSecret()
 	if err != nil {
@@ -180,6 +190,9 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 	}
 	assetsBasePath := basePath + "assets/"
 
+	isHTTPS := s.isHTTPS()
+	engine.Use(middleware.SecurityHeaders(isHTTPS))
+
 	// session cookie 在两种传输上都强化：
 	//   HttpOnly       : 禁止 JS 访问 document.cookie，挡 XSS 偷 session
 	//   SameSite=Lax   : 阻止跨站自动携带，降低 CSRF 攻击面（同时 CSRF 中间件兜底）
@@ -190,7 +203,7 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 		Path:     basePath,
 		HttpOnly: true,
 		SameSite: http.SameSiteLaxMode,
-		Secure:   s.isHTTPS(),
+		Secure:   isHTTPS,
 		MaxAge:   6 * 60 * 60,
 	})
 	engine.Use(sessions.Sessions("session", store))
@@ -205,28 +218,33 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 			c.Header("Cache-Control", "max-age=31536000")
 		}
 	})
-	err = s.initI18n(engine)
-	if err != nil {
+	if err := s.initI18n(engine); err != nil {
 		return nil, err
 	}
 
 	if config.IsDebug() {
-		// for develop
+		// for develop：模板从磁盘读取，改完刷新即可生效。
 		files, err := s.getHtmlFiles()
 		if err != nil {
 			return nil, err
 		}
-		engine.LoadHTMLFiles(files...)
-		engine.StaticFS(basePath+"assets", http.FS(os.DirFS("web/assets")))
-	} else {
-		// for prod
-		t, err := s.getHtmlTemplate(engine.FuncMap)
+		t, err := template.New("").Funcs(locale.PlaceholderFuncMap()).ParseFiles(files...)
 		if err != nil {
 			return nil, err
 		}
-		engine.SetHTMLTemplate(t)
+		render.SetGlobal(render.New(t))
+		engine.StaticFS(basePath+"assets", http.FS(os.DirFS("web/assets")))
+	} else {
+		// for prod：模板与静态资源都来自二进制内嵌 FS。
+		t, err := s.getHtmlTemplate(locale.PlaceholderFuncMap())
+		if err != nil {
+			return nil, err
+		}
+		render.SetGlobal(render.New(t))
 		engine.StaticFS(basePath+"assets", http.FS(&wrapAssetsFS{FS: assetsFS}))
 	}
+
+	s.registerHealthRoutes(engine, basePath)
 
 	g := engine.Group(basePath)
 
@@ -237,72 +255,29 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 	return engine, nil
 }
 
-func (s *Server) initI18n(engine *gin.Engine) error {
-	bundle := i18n.NewBundle(language.SimplifiedChinese)
-	bundle.RegisterUnmarshalFunc("toml", toml.Unmarshal)
-	err := fs.WalkDir(i18nFS, "translation", func(path string, d fs.DirEntry, err error) error {
-		if err != nil {
-			return err
-		}
-		if d.IsDir() {
-			return nil
-		}
-		data, err := i18nFS.ReadFile(path)
-		if err != nil {
-			return err
-		}
-		_, err = bundle.ParseMessageFileBytes(data, path)
-		return err
-	})
+// applyTrustedProxies 配置 gin 的受信代理列表。
+//
+// 默认（设置为空）调用 SetTrustedProxies(nil)：gin 完全忽略 X-Forwarded-For /
+// X-Real-IP，c.ClientIP() 返回 TCP 对端地址。这是登录限流不被伪造头绕过的前提。
+func (s *Server) applyTrustedProxies(engine *gin.Engine) error {
+	proxies, err := s.settingService.GetTrustedProxies()
 	if err != nil {
 		return err
 	}
-
-	findI18nParamNames := func(key string) []string {
-		names := make([]string, 0)
-		keyLen := len(key)
-		for i := 0; i < keyLen-1; i++ {
-			if key[i:i+2] == "{{" { // 判断开头 "{{"
-				j := i + 2
-				isFind := false
-				for ; j < keyLen-1; j++ {
-					if key[j:j+2] == "}}" { // 结尾 "}}"
-						isFind = true
-						break
-					}
-				}
-				if isFind {
-					names = append(names, key[i+3:j])
-				}
-			}
-		}
-		return names
+	if len(proxies) == 0 {
+		engine.ForwardedByClientIP = false
+		return engine.SetTrustedProxies(nil)
 	}
+	engine.ForwardedByClientIP = true
+	logger.Info("trusting reverse proxies:", strings.Join(proxies, ","))
+	return engine.SetTrustedProxies(proxies)
+}
 
-	var localizer *i18n.Localizer
-
-	engine.FuncMap["i18n"] = func(key string, params ...string) (string, error) {
-		names := findI18nParamNames(key)
-		if len(names) != len(params) {
-			return "", common.NewError("find names:", names, "---------- params:", params, "---------- num not equal")
-		}
-		templateData := map[string]interface{}{}
-		for i := range names {
-			templateData[names[i]] = params[i]
-		}
-		return localizer.Localize(&i18n.LocalizeConfig{
-			MessageID:    key,
-			TemplateData: templateData,
-		})
+func (s *Server) initI18n(engine *gin.Engine) error {
+	if err := locale.Init(i18nFS, "translation"); err != nil {
+		return err
 	}
-
-	engine.Use(func(c *gin.Context) {
-		accept := c.GetHeader("Accept-Language")
-		localizer = i18n.NewLocalizer(bundle, accept)
-		c.Set("localizer", localizer)
-		c.Next()
-	})
-
+	engine.Use(locale.Middleware())
 	return nil
 }
 
@@ -388,8 +363,10 @@ func (s *Server) Start() (err error) {
 			listener.Close()
 			return err
 		}
+		// 明确下限 TLS 1.2：Go 默认服务端下限仍接受 TLS 1.0/1.1，不满足现行合规要求。
 		c := &tls.Config{
 			Certificates: []tls.Certificate{cert},
+			MinVersion:   tls.VersionTLS12,
 		}
 		listener = network.NewAutoHttpsListener(listener)
 		listener = tls.NewListener(listener, c)
@@ -405,7 +382,8 @@ func (s *Server) Start() (err error) {
 	s.startTask()
 
 	s.httpServer = &http.Server{
-		Handler: engine,
+		Handler:           engine,
+		ReadHeaderTimeout: 20 * time.Second,
 	}
 
 	go func() {
@@ -415,20 +393,35 @@ func (s *Server) Start() (err error) {
 	return nil
 }
 
+// Stop 按「先子进程、再定时任务、最后 HTTP」的顺序停机。
+//
+// 关键修正：Shutdown 必须使用独立的、带超时的 context。
+// 历史实现先 s.cancel() 再把已取消的 s.ctx 传给 Shutdown，
+// 等价于立即强制关闭，正在处理的请求会被直接掐断，"优雅"二字名存实亡。
+// 现在改为：排空请求（最多 shutdownTimeout）之后才 cancel 服务级 context。
 func (s *Server) Stop() error {
-	s.cancel()
 	_ = s.coreService.StopCore()
 	if s.cron != nil {
 		s.cron.Stop()
 	}
+
 	var err1 error
 	var err2 error
 	if s.httpServer != nil {
-		err1 = s.httpServer.Shutdown(s.ctx)
+		ctx, cancel := context.WithTimeout(context.Background(), shutdownTimeout)
+		err1 = s.httpServer.Shutdown(ctx)
+		cancel()
 	}
 	if s.listener != nil {
 		err2 = s.listener.Close()
+		// Shutdown 成功时监听套接字已被关闭，这里的二次 Close 必然返回
+		// "use of closed network connection"，不是真实故障，忽略之。
+		if err2 != nil && errors.Is(err2, net.ErrClosed) {
+			err2 = nil
+		}
 	}
+
+	s.cancel()
 	return common.Combine(err1, err2)
 }
 

@@ -216,3 +216,30 @@
 "connections" = "tcp / udp connections"
 "network_io" = "network I/O"
 "network_traffic" = "total traffic"
+
+# ------- Operation result messages (server side) -------
+"op_suffix_success" = " succeeded"
+"op_suffix_fail" = " failed: "
+"op_get" = "Fetch"
+"op_add" = "Add"
+"op_delete" = "Delete"
+"op_update" = "Update"
+"op_get_setting" = "Fetch settings"
+"op_update_setting" = "Update settings"
+"op_update_user" = "Update account"
+"op_restart_panel" = "Restart panel"
+"op_get_version" = "Fetch versions"
+"op_install_core" = "Install sing-box"
+"err_invalid_version" = "invalid version format"
+
+# ------- Security warnings -------
+"warn_initial_credentials" = "You are still using the randomly generated first-boot password. Open Panel Settings and change the username and password now."
+
+# ------- Language switcher -------
+"language" = "Language"
+"lang_follow_browser" = "Follow browser"
+
+# ------- Trusted proxies setting -------
+"setting_web_trusted_proxies" = "Trusted proxy CIDRs"
+"setting_web_trusted_proxies_desc" = "Comma-separated CIDRs of reverse proxies in front of the panel. Empty (recommended) means X-Forwarded-For is ignored entirely and the client IP is the TCP peer address."
+"proto_reality_gen_keys" = "Generate key pair"

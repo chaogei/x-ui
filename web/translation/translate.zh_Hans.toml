@@ -220,3 +220,30 @@
 "connections" = "tcp / udp 连接数"
 "network_io" = "网络速率"
 "network_traffic" = "累计流量"
+
+# ------- 操作结果提示（服务端） -------
+"op_suffix_success" = "成功"
+"op_suffix_fail" = "失败: "
+"op_get" = "获取"
+"op_add" = "添加"
+"op_delete" = "删除"
+"op_update" = "修改"
+"op_get_setting" = "获取设置"
+"op_update_setting" = "修改设置"
+"op_update_user" = "修改用户"
+"op_restart_panel" = "重启面板"
+"op_get_version" = "获取版本"
+"op_install_core" = "安装 sing-box"
+"err_invalid_version" = "版本号格式非法"
+
+# ------- 安全告警 -------
+"warn_initial_credentials" = "当前仍在使用首次启动自动生成的随机密码，请立即前往「面板设置」修改用户名与密码。"
+
+# ------- 语言切换 -------
+"language" = "语言"
+"lang_follow_browser" = "跟随浏览器"
+
+# ------- 受信代理设置 -------
+"setting_web_trusted_proxies" = "受信代理网段"
+"setting_web_trusted_proxies_desc" = "面板前置反向代理的 CIDR 列表，逗号分隔。留空（推荐）表示完全忽略 X-Forwarded-For，客户端 IP 取 TCP 对端地址。"
+"proto_reality_gen_keys" = "生成密钥对"

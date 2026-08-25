@@ -216,3 +216,30 @@
 "connections" = "tcp / udp 連線數"
 "network_io" = "網路速率"
 "network_traffic" = "累計流量"
+
+# ------- 操作結果提示（伺服端） -------
+"op_suffix_success" = "成功"
+"op_suffix_fail" = "失敗: "
+"op_get" = "取得"
+"op_add" = "新增"
+"op_delete" = "刪除"
+"op_update" = "修改"
+"op_get_setting" = "取得設定"
+"op_update_setting" = "修改設定"
+"op_update_user" = "修改使用者"
+"op_restart_panel" = "重啟面板"
+"op_get_version" = "取得版本"
+"op_install_core" = "安裝 sing-box"
+"err_invalid_version" = "版本號格式不合法"
+
+# ------- 安全警告 -------
+"warn_initial_credentials" = "目前仍在使用首次啟動自動產生的隨機密碼，請立即前往「面板設定」修改使用者名稱與密碼。"
+
+# ------- 語言切換 -------
+"language" = "語言"
+"lang_follow_browser" = "跟隨瀏覽器"
+
+# ------- 受信任代理設定 -------
+"setting_web_trusted_proxies" = "受信任代理網段"
+"setting_web_trusted_proxies_desc" = "面板前置反向代理的 CIDR 清單，以逗號分隔。留空（建議）表示完全忽略 X-Forwarded-For，用戶端 IP 取 TCP 對端位址。"
+"proto_reality_gen_keys" = "產生金鑰對"
