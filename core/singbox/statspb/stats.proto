@@ -1,0 +1,51 @@
+// stats.proto 是 x-ui 与 sing-box `experimental.v2ray_api` 通信所需的最小 schema。
+//
+// 为什么 package 名是 v2ray.core.app.stats.command 而不是 sing-box 自己的
+// experimental.v2rayapi：
+//
+// sing-box 的 experimental/v2rayapi/stats.go 在 init() 里做了一次改名——
+//
+//	func init() {
+//	    StatsService_ServiceDesc.ServiceName = "v2ray.core.app.stats.command.StatsService"
+//	}
+//
+// 也就是说线上真正注册的 gRPC 服务全名是 V2Ray 的那一个，proto 文件里的
+// experimental.v2rayapi 只是它生成代码时的包名。客户端必须按
+// /v2ray.core.app.stats.command.StatsService/QueryStats 发起调用，
+// 否则 sing-box 会回 codes.Unimplemented。
+//
+// （历史实现借用 xtls/xray-core 的 stub，其全名是
+// /xray.app.stats.command.StatsService/QueryStats，与 sing-box 对不上。）
+//
+// 字段编号与 sing-box experimental/v2rayapi/stats.proto 逐字对齐，
+// 二者在 protobuf 线格式上完全兼容。x-ui 只用到 QueryStats，
+// GetStats / GetSysStats 未实现。
+
+syntax = "proto3";
+
+package v2ray.core.app.stats.command;
+
+option go_package = "x-ui/core/singbox/statspb";
+
+// Stat 是一个命名计数器，name 形如 inbound>>>tag>>>traffic>>>uplink。
+message Stat {
+  string name = 1;
+  int64 value = 2;
+}
+
+message QueryStatsRequest {
+  // pattern 为空表示"返回全部计数器"。
+  string pattern = 1;
+  // reset 为 true 时服务端在返回后把计数器清零（读取即重置）。
+  bool reset = 2;
+  repeated string patterns = 3;
+  bool regexp = 4;
+}
+
+message QueryStatsResponse {
+  repeated Stat stat = 1;
+}
+
+service StatsService {
+  rpc QueryStats(QueryStatsRequest) returns (QueryStatsResponse) {}
+}

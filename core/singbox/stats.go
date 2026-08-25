@@ -7,16 +7,25 @@ import (
 	"regexp"
 	"sync"
 	"time"
-	"x-ui/core"
 
-	statsservice "github.com/xtls/xray-core/app/stats/command"
+	"x-ui/core"
+	"x-ui/core/singbox/statspb"
+
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-// trafficRegex 匹配 V2Ray/Xray/sing-box StatsService 返回的流量名。
-// 示例：inbound>>>inbound-443>>>traffic>>>uplink
-var trafficRegex = regexp.MustCompile(`(inbound|outbound)>>>([^>]+)>>>traffic>>>(downlink|uplink)`)
+// trafficRegex 匹配 sing-box v2ray_api StatsService 返回的流量计数器名。
+//
+// 三种前缀分别对应入站、出站与"按用户"维度：
+//
+//	inbound>>>inbound-443-vmess>>>traffic>>>uplink
+//	outbound>>>direct>>>traffic>>>downlink
+//	user>>>alice@example.com>>>traffic>>>uplink
+//
+// user 维度是多用户配额的依据：sing-box 只有在 experimental.v2ray_api.stats.users
+// 里列出用户名时才建这个计数器，名字取自 inbound settings 中该用户的 name 字段。
+var trafficRegex = regexp.MustCompile(`^(inbound|outbound|user)>>>(.+)>>>traffic>>>(downlink|uplink)$`)
 
 // statsQueryTimeout 单次 QueryStats RPC 的最长等待时间。
 const statsQueryTimeout = 10 * time.Second
@@ -26,12 +35,11 @@ const statsQueryTimeout = 10 * time.Second
 // 设计为 Process 生命周期内复用一条连接：避免每次拉流量（默认 10s 一次）都
 // 重新进行 TCP 握手 + HTTP/2 初始化造成无谓的 CPU/socket 开销。
 //
-// sing-box 的 experimental.v2ray_api 在 protobuf 层与 Xray StatsService 完全兼容，
-// 所以直接复用 xray-core 的 grpc stub 生成代码。
+// 协议 stub 来自本仓库的 core/singbox/statspb（手写线格式，无 xray-core 依赖）。
 type statsClient struct {
 	mu     sync.Mutex
 	conn   *grpc.ClientConn
-	client statsservice.StatsServiceClient
+	client statspb.StatsServiceClient
 }
 
 // newStatsClient 建立一条到本地 API 端口的 gRPC 懒连接。
@@ -47,7 +55,7 @@ func newStatsClient(apiPort int) (*statsClient, error) {
 	}
 	return &statsClient{
 		conn:   conn,
-		client: statsservice.NewStatsServiceClient(conn),
+		client: statspb.NewStatsServiceClient(conn),
 	}, nil
 }
 
@@ -64,7 +72,7 @@ func (c *statsClient) Close() error {
 	return err
 }
 
-// QueryTraffic 拉取 V2Ray 流量统计并按 tag 聚合上下行。
+// QueryTraffic 拉取流量统计并按维度 + tag 聚合上下行。
 // reset=true 时服务端会在返回后清零计数器。
 func (c *statsClient) QueryTraffic(reset bool) ([]*core.Traffic, error) {
 	c.mu.Lock()
@@ -76,38 +84,57 @@ func (c *statsClient) QueryTraffic(reset bool) ([]*core.Traffic, error) {
 
 	ctx, cancel := context.WithTimeout(context.Background(), statsQueryTimeout)
 	defer cancel()
-	resp, err := client.QueryStats(ctx, &statsservice.QueryStatsRequest{Reset_: reset})
+	resp, err := client.QueryStats(ctx, &statspb.QueryStatsRequest{Reset_: reset})
 	if err != nil {
 		return nil, err
 	}
+	return aggregateTraffic(resp.GetStat()), nil
+}
 
-	tagTrafficMap := make(map[string]*core.Traffic)
-	result := make([]*core.Traffic, 0)
-	for _, stat := range resp.GetStat() {
+// aggregateTraffic 把扁平的计数器列表折叠成按 (维度, tag) 分组的 Traffic。
+//
+// 抽成独立函数是为了能在不起 gRPC 服务的前提下用表驱动用例覆盖名字解析：
+// 这段逻辑的错误（例如把 api 的自身流量算进用户配额）在生产环境很难被发现。
+func aggregateTraffic(stats []*statspb.Stat) []*core.Traffic {
+	type key struct {
+		kind string
+		tag  string
+	}
+	index := make(map[key]*core.Traffic, len(stats))
+	result := make([]*core.Traffic, 0, len(stats))
+
+	for _, stat := range stats {
+		if stat == nil {
+			continue
+		}
 		matches := trafficRegex.FindStringSubmatch(stat.Name)
 		if len(matches) != 4 {
 			continue
 		}
-		isInbound := matches[1] == "inbound"
-		tag := matches[2]
-		if tag == "api" {
+		kind, tag, dir := matches[1], matches[2], matches[3]
+		// api 是面板自己的管理入站，它的流量不属于任何用户，也不该计入配额。
+		if kind == "inbound" && tag == "api" {
 			continue
 		}
-		isDown := matches[3] == "downlink"
 
-		t, ok := tagTrafficMap[tag]
+		k := key{kind: kind, tag: tag}
+		t, ok := index[k]
 		if !ok {
-			t = &core.Traffic{IsInbound: isInbound, Tag: tag}
-			tagTrafficMap[tag] = t
+			t = &core.Traffic{
+				IsInbound: kind == "inbound",
+				IsUser:    kind == "user",
+				Tag:       tag,
+			}
+			index[k] = t
 			result = append(result, t)
 		}
-		if isDown {
+		if dir == "downlink" {
 			t.Down = stat.Value
 		} else {
 			t.Up = stat.Value
 		}
 	}
-	return result, nil
+	return result
 }
 
 // GetTraffic 是 core.Core 接口的实现：
