@@ -1,9 +1,9 @@
-// +build darwin
+//go:build darwin
 
 package sys
 
 import (
-	"github.com/shirou/gopsutil/net"
+	"github.com/shirou/gopsutil/v4/net"
 )
 
 func GetTCPCount() (int, error) {

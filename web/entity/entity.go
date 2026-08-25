@@ -32,6 +32,7 @@ type AllSetting struct {
 	WebCertFile        string `json:"webCertFile" form:"webCertFile"`
 	WebKeyFile         string `json:"webKeyFile" form:"webKeyFile"`
 	WebBasePath        string `json:"webBasePath" form:"webBasePath"`
+	WebTrustedProxies  string `json:"webTrustedProxies" form:"webTrustedProxies"`
 	TgBotEnable        bool   `json:"tgBotEnable" form:"tgBotEnable"`
 	TgBotToken         string `json:"tgBotToken" form:"tgBotToken"`
 	TgBotChatId        int    `json:"tgBotChatId" form:"tgBotChatId"`
@@ -67,13 +68,24 @@ func (s *AllSetting) CheckValid() error {
 		s.WebBasePath += "/"
 	}
 
+	// 空表示"不信任任何代理"，是最安全的默认值；非空时逐项校验 CIDR，
+	// 避免把非法字符串交给 gin.SetTrustedProxies 在启动时才报错。
+	for _, p := range strings.FieldsFunc(s.WebTrustedProxies, func(r rune) bool {
+		return r == ',' || r == ' ' || r == '\t' || r == '\n' || r == '\r'
+	}) {
+		if _, _, err := net.ParseCIDR(p); err != nil {
+			if net.ParseIP(p) == nil {
+				return common.NewError("trusted proxy is not a valid IP or CIDR:", p)
+			}
+		}
+	}
+
 	cfg := &singbox.Config{}
 	if err := json.Unmarshal([]byte(s.CoreTemplateConfig), cfg); err != nil {
 		return common.NewError("sing-box template config invalid:", err)
 	}
 
-	_, err = time.LoadLocation(s.TimeLocation)
-	if err != nil {
+	if _, err := time.LoadLocation(s.TimeLocation); err != nil {
 		return common.NewError("time location not exist:", s.TimeLocation)
 	}
 
