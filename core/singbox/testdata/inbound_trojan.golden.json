@@ -1,0 +1,17 @@
+{
+  "type": "trojan",
+  "tag": "inbound-10003-trojan",
+  "listen_port": 10003,
+  "users": [
+    {
+      "name": "u1",
+      "password": "s3cret"
+    }
+  ],
+  "tls": {
+    "enabled": true,
+    "server_name": "trojan.example.com"
+  },
+  "sniff": true,
+  "sniff_override_destination": true
+}

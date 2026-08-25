@@ -1,0 +1,19 @@
+{
+  "type": "shadowtls",
+  "tag": "inbound-10008-shadowtls",
+  "listen_port": 10008,
+  "version": 3,
+  "users": [
+    {
+      "name": "u1",
+      "password": "stlspass"
+    }
+  ],
+  "handshake": {
+    "server": "www.microsoft.com",
+    "server_port": 443
+  },
+  "strict_mode": false,
+  "sniff": true,
+  "sniff_override_destination": true
+}

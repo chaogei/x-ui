@@ -1,0 +1,13 @@
+{
+  "type": "socks",
+  "tag": "inbound-10011-socks",
+  "listen_port": 10011,
+  "users": [
+    {
+      "username": "suser",
+      "password": "spass"
+    }
+  ],
+  "sniff": true,
+  "sniff_override_destination": true
+}

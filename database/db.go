@@ -2,6 +2,7 @@ package database
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"path"
 
@@ -69,10 +70,21 @@ func initUser() error {
 	return nil
 }
 
+// credentialsWriter 是初始凭证公告的输出目标。
+// 默认 stderr；测试通过 SetCredentialsOutput 改写以断言"只打印一次"。
+var credentialsWriter io.Writer = os.Stderr
+
+// SetCredentialsOutput 替换初始凭证公告的输出目标并返回旧值。
+func SetCredentialsOutput(w io.Writer) io.Writer {
+	old := credentialsWriter
+	credentialsWriter = w
+	return old
+}
+
 // announceInitialCredentials 把首次启动生成的凭证打印到 stderr（且仅此一次）。
 // Docker 部署下用户从容器日志读取；systemd 部署下从 journalctl 读取。
 func announceInitialCredentials(username, password string) {
-	fmt.Fprintf(os.Stderr, `
+	fmt.Fprintf(credentialsWriter, `
 ================================================================
  x-ui: 已生成初始管理员账号（此口令只显示这一次，请立即保存）
    username: %s

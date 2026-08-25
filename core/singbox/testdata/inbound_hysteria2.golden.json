@@ -1,0 +1,20 @@
+{
+  "type": "hysteria2",
+  "tag": "inbound-10005-hysteria2",
+  "listen_port": 10005,
+  "up_mbps": 100,
+  "down_mbps": 100,
+  "users": [
+    {
+      "name": "u1",
+      "password": "hy2pass"
+    }
+  ],
+  "ignore_client_bandwidth": false,
+  "tls": {
+    "enabled": true,
+    "server_name": "hy2.example.com"
+  },
+  "sniff": true,
+  "sniff_override_destination": true
+}

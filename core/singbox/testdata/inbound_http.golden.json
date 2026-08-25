@@ -1,0 +1,13 @@
+{
+  "type": "http",
+  "tag": "inbound-10012-http",
+  "listen_port": 10012,
+  "users": [
+    {
+      "username": "huser",
+      "password": "hpass"
+    }
+  ],
+  "sniff": true,
+  "sniff_override_destination": true
+}

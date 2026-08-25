@@ -1,0 +1,22 @@
+{
+  "type": "wireguard",
+  "tag": "inbound-10010-wireguard",
+  "listen_port": 10010,
+  "system": false,
+  "mtu": 1420,
+  "address": [
+    "10.0.0.1/32"
+  ],
+  "private_key": "wgprivkey",
+  "peers": [
+    {
+      "address": "1.2.3.4",
+      "port": 51820,
+      "public_key": "wgpubkey",
+      "allowed_ips": [
+        "0.0.0.0/0"
+      ],
+      "persistent_keepalive_interval": 0
+    }
+  ]
+}

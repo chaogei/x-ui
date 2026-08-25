@@ -1,0 +1,31 @@
+{
+  "type": "vless",
+  "tag": "inbound-10002-vless",
+  "listen": "0.0.0.0",
+  "listen_port": 10002,
+  "users": [
+    {
+      "name": "u1",
+      "uuid": "22222222-2222-2222-2222-222222222222",
+      "flow": "xtls-rprx-vision"
+    }
+  ],
+  "tls": {
+    "enabled": true,
+    "server_name": "www.example.com",
+    "reality": {
+      "enabled": true,
+      "handshake": {
+        "server": "www.example.com",
+        "server_port": 443
+      },
+      "private_key": "UIJEyLnaMj3vRJJHVPz5WSPTvJvVJqQ7Yq0kZUuAHFk",
+      "public_key": "5rSVKp0zC0lTBSjJPjnQZmM8t2GJyCkFvFsGYPuSMH0",
+      "short_id": [
+        "0123abcd"
+      ]
+    }
+  },
+  "sniff": true,
+  "sniff_override_destination": true
+}

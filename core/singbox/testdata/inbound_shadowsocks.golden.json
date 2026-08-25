@@ -1,0 +1,10 @@
+{
+  "type": "shadowsocks",
+  "tag": "inbound-10004-shadowsocks",
+  "listen_port": 10004,
+  "method": "2022-blake3-aes-128-gcm",
+  "password": "c2hvcnQta2V5LTEyMzQ1Ng==",
+  "network": "tcp",
+  "sniff": true,
+  "sniff_override_destination": true
+}

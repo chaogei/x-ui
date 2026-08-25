@@ -1,0 +1,18 @@
+{
+  "type": "vmess",
+  "tag": "inbound-10001-vmess",
+  "listen": "0.0.0.0",
+  "listen_port": 10001,
+  "users": [
+    {
+      "name": "u1",
+      "uuid": "11111111-1111-1111-1111-111111111111",
+      "alterId": 0
+    }
+  ],
+  "tls": {
+    "enabled": false
+  },
+  "sniff": true,
+  "sniff_override_destination": true
+}

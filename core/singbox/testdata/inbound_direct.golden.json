@@ -1,0 +1,8 @@
+{
+  "type": "direct",
+  "tag": "inbound-10014-direct",
+  "listen_port": 10014,
+  "override_address": "1.1.1.1",
+  "override_port": 53,
+  "network": "udp"
+}

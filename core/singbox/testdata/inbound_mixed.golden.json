@@ -1,0 +1,13 @@
+{
+  "type": "mixed",
+  "tag": "inbound-10013-mixed",
+  "listen_port": 10013,
+  "users": [
+    {
+      "username": "muser",
+      "password": "mpass"
+    }
+  ],
+  "sniff": true,
+  "sniff_override_destination": true
+}
