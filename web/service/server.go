@@ -7,12 +7,14 @@ import (
 	"crypto/sha256"
 	"encoding/hex"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"net/http"
+	"net/url"
 	"os"
 	"path"
+	"regexp"
 	"runtime"
 	"strings"
 	"time"
@@ -170,15 +172,20 @@ func (s *ServerService) GetStatus(lastStatus *Status) *Status {
 
 // GetCoreVersions 拉取 SagerNet/sing-box 的最新 release 列表。
 func (s *ServerService) GetCoreVersions() ([]string, error) {
-	url := "https://api.github.com/repos/SagerNet/sing-box/releases"
-	resp, err := http.Get(url)
+	const releasesURL = "https://api.github.com/repos/SagerNet/sing-box/releases"
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Get(releasesURL)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("list sing-box releases failed: HTTP %d", resp.StatusCode)
+	}
 
 	buffer := bytes.NewBuffer(make([]byte, 0, 16384))
-	if _, err = buffer.ReadFrom(resp.Body); err != nil {
+	// 上限 4 MiB，避免恶意/异常响应把面板内存打爆。
+	if _, err = buffer.ReadFrom(io.LimitReader(resp.Body, 4<<20)); err != nil {
 		return nil, err
 	}
 	releases := make([]Release, 0)
@@ -192,15 +199,82 @@ func (s *ServerService) GetCoreVersions() ([]string, error) {
 	return versions, nil
 }
 
+// coreVersionPattern 限定用户可提交的 sing-box 版本号形态。
+//
+// 该字符串同时进入下载 URL 与本地文件名，必须先做白名单校验，
+// 否则 `../../etc/cron.d/x` 这类输入会造成任意路径写入 + SSRF。
+var coreVersionPattern = regexp.MustCompile(`^v?\d+\.\d+\.\d+([.-][0-9A-Za-z.]+)*$`)
+
+// ErrInvalidCoreVersion 表示版本号未通过白名单校验。
+var ErrInvalidCoreVersion = errors.New("invalid sing-box version")
+
+// allowedDownloadHosts 是 UpdateCore 允许连接的主机白名单。
+// GitHub release 下载会 302 到 objects.githubusercontent.com，两者都需放行；
+// 任何跳出白名单的重定向都会被拒绝，避免被篡改的 release 元数据把请求引向他处。
+var allowedDownloadHosts = map[string]bool{
+	"github.com":                           true,
+	"api.github.com":                       true,
+	"objects.githubusercontent.com":        true,
+	"release-assets.githubusercontent.com": true,
+	"codeload.github.com":                  true,
+}
+
+// coreDownloadTimeout 是整个内核下载过程（含重定向）的上限。
+const coreDownloadTimeout = 10 * time.Minute
+
+// ValidateCoreVersion 校验版本号并返回规整后的值。
+// 导出以便控制器在真正发起下载之前就返回 400 级错误。
+func ValidateCoreVersion(version string) (string, error) {
+	v := strings.TrimSpace(version)
+	if v == "" || len(v) > 64 {
+		return "", fmt.Errorf("%w: %q", ErrInvalidCoreVersion, version)
+	}
+	if !coreVersionPattern.MatchString(v) {
+		return "", fmt.Errorf("%w: %q", ErrInvalidCoreVersion, version)
+	}
+	return v, nil
+}
+
+// newDownloadClient 构造受限的 HTTP 客户端：
+// 带整体超时，且每一跳都必须落在 allowedDownloadHosts 内。
+func newDownloadClient() *http.Client {
+	return &http.Client{
+		Timeout: coreDownloadTimeout,
+		CheckRedirect: func(req *http.Request, via []*http.Request) error {
+			if len(via) >= 10 {
+				return errors.New("too many redirects")
+			}
+			if !allowedDownloadHosts[req.URL.Hostname()] {
+				return fmt.Errorf("refusing redirect to untrusted host %q", req.URL.Hostname())
+			}
+			if req.URL.Scheme != "https" {
+				return fmt.Errorf("refusing non-https redirect to %q", req.URL.Scheme)
+			}
+			return nil
+		},
+	}
+}
+
 // UpdateCore 下载指定版本的 sing-box 归档并替换 bin 目录下的二进制。
 //
 // 归档约定：`sing-box-<version>-<os>-<arch>.tar.gz`
 // （Windows 归档为 .zip，本项目仅在 Linux/macOS 服务器部署，不做处理）。
 //
+// 安全约定：
+//   - version 必须先过 ValidateCoreVersion 白名单，杜绝路径穿越与 URL 注入；
+//   - 归档写入 os.CreateTemp 生成的临时文件，绝不用用户可控的相对路径；
+//   - HTTP 客户端带超时且限制重定向目标主机。
+//
 // 下载后会尽力尝试 SHA256 校验：
 //   - 若 release 提供了 `{archive}.sha256` 侧车文件，则必须一致；不一致直接失败。
-//   - 若 checksum 文件不存在（HTTP 404），则告警后继续（best-effort，避免阻断旧版）。
+//   - 若 checksum 文件不存在（HTTP 404），则告警后继续（best-effort，避免阻断旧版）；
+//     此时日志明确写明"未校验"，不谎称已验证。
 func (s *ServerService) UpdateCore(version string) error {
+	version, err := ValidateCoreVersion(version)
+	if err != nil {
+		return err
+	}
+
 	archivePath, computedSum, err := s.downloadCore(version)
 	if err != nil {
 		return err
@@ -221,20 +295,22 @@ func (s *ServerService) UpdateCore(version string) error {
 	return extractSingBoxBinary(archivePath, singbox.GetBinaryPath())
 }
 
-// downloadCore 下载归档并同时计算 SHA256，返回（路径，sha256 hex，错误）。
-func (s *ServerService) downloadCore(version string) (string, string, error) {
-	osName := runtime.GOOS
-	arch := runtime.GOARCH
-
+// coreArchiveName 返回给定版本的归档文件名。version 必须已通过校验。
+func coreArchiveName(version string) string {
 	// sing-box 归档文件名里版本号不含 "v" 前缀，但 release tag 含 "v"。
-	rawVersion := version
-	if strings.HasPrefix(rawVersion, "v") {
-		rawVersion = rawVersion[1:]
-	}
+	rawVersion := strings.TrimPrefix(version, "v")
+	return fmt.Sprintf("sing-box-%s-%s-%s.tar.gz", rawVersion, runtime.GOOS, runtime.GOARCH)
+}
 
-	fileName := fmt.Sprintf("sing-box-%s-%s-%s.tar.gz", rawVersion, osName, arch)
-	url := fmt.Sprintf("https://github.com/SagerNet/sing-box/releases/download/%s/%s", version, fileName)
-	resp, err := http.Get(url)
+// coreDownloadURL 返回归档下载地址。version 必须已通过校验。
+func coreDownloadURL(version string) string {
+	return fmt.Sprintf("https://github.com/SagerNet/sing-box/releases/download/%s/%s",
+		url.PathEscape(version), url.PathEscape(coreArchiveName(version)))
+}
+
+// downloadCore 下载归档并同时计算 SHA256，返回（临时文件路径，sha256 hex，错误）。
+func (s *ServerService) downloadCore(version string) (string, string, error) {
+	resp, err := newDownloadClient().Get(coreDownloadURL(version))
 	if err != nil {
 		return "", "", err
 	}
@@ -243,8 +319,8 @@ func (s *ServerService) downloadCore(version string) (string, string, error) {
 		return "", "", fmt.Errorf("download sing-box failed: HTTP %d", resp.StatusCode)
 	}
 
-	os.Remove(fileName)
-	file, err := os.Create(fileName)
+	// 固定的进程临时目录 + 随机后缀，文件名与用户输入完全解耦。
+	file, err := os.CreateTemp("", "x-ui-singbox-*.tar.gz")
 	if err != nil {
 		return "", "", err
 	}
@@ -253,48 +329,45 @@ func (s *ServerService) downloadCore(version string) (string, string, error) {
 	hasher := sha256.New()
 	// 同时写入文件与 hasher，避免再读一次磁盘算哈希。
 	if _, err = io.Copy(io.MultiWriter(file, hasher), resp.Body); err != nil {
+		os.Remove(file.Name())
 		return "", "", err
 	}
-	return fileName, hex.EncodeToString(hasher.Sum(nil)), nil
+	return file.Name(), hex.EncodeToString(hasher.Sum(nil)), nil
 }
 
 // verifyCoreChecksum 尽力校验归档 SHA256。
 //
 // 优先级：
 //  1. `{archive_url}.sha256` 侧车文件：格式通常为 `<hex>  <filename>` 或纯 `<hex>`。
-//  2. 若 404 则判定 release 未提供 checksum，记录 warning 并放行。
+//  2. 若 404 则判定 release 未提供 checksum，记录 warning 并放行（明确标注未校验）。
 //  3. 其他下载错误视为临时故障，同样放行（不影响升级操作本身）。
 func (s *ServerService) verifyCoreChecksum(version, archivePath, computedSum string) error {
-	osName := runtime.GOOS
-	arch := runtime.GOARCH
-	rawVersion := strings.TrimPrefix(version, "v")
-	fileName := fmt.Sprintf("sing-box-%s-%s-%s.tar.gz", rawVersion, osName, arch)
-	url := fmt.Sprintf("https://github.com/SagerNet/sing-box/releases/download/%s/%s.sha256", version, fileName)
+	checksumURL := coreDownloadURL(version) + ".sha256"
 
-	resp, err := http.Get(url)
+	resp, err := newDownloadClient().Get(checksumURL)
 	if err != nil {
-		logger.Warningf("fetch sing-box checksum failed, skip verification: %v", err)
+		logger.Warningf("sing-box archive NOT verified: fetch checksum failed: %v", err)
 		return nil
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode == http.StatusNotFound {
-		logger.Warningf("sing-box release %s has no .sha256 sidecar, skip verification", version)
+		logger.Warningf("sing-box archive NOT verified: release %s publishes no .sha256 sidecar (sha256=%s)", version, computedSum)
 		return nil
 	}
 	if resp.StatusCode != http.StatusOK {
-		logger.Warningf("fetch sing-box checksum returned HTTP %d, skip verification", resp.StatusCode)
+		logger.Warningf("sing-box archive NOT verified: checksum fetch returned HTTP %d", resp.StatusCode)
 		return nil
 	}
 
 	body, err := io.ReadAll(io.LimitReader(resp.Body, 4096))
 	if err != nil {
-		logger.Warningf("read sing-box checksum body failed: %v", err)
+		logger.Warningf("sing-box archive NOT verified: read checksum body failed: %v", err)
 		return nil
 	}
 
 	expected := parseFirstHex(string(body))
 	if expected == "" {
-		logger.Warningf("sing-box checksum body has no hex sha256, skip verification")
+		logger.Warningf("sing-box archive NOT verified: checksum body has no hex sha256")
 		return nil
 	}
 	if !strings.EqualFold(expected, computedSum) {
@@ -352,8 +425,12 @@ func extractSingBoxBinary(archivePath, dstPath string) error {
 		if base != "sing-box" && base != "sing-box.exe" {
 			continue
 		}
+		if err := os.MkdirAll(path.Dir(dstPath), 0o700); err != nil {
+			return err
+		}
 		os.Remove(dstPath)
-		out, err := os.OpenFile(dstPath, os.O_CREATE|os.O_RDWR|os.O_TRUNC, fs.ModePerm)
+		// 0700：owner 可执行即可，绝不下发 world-writable 的内核二进制。
+		out, err := os.OpenFile(dstPath, os.O_CREATE|os.O_RDWR|os.O_TRUNC, singbox.BinaryFilePerm)
 		if err != nil {
 			return err
 		}
@@ -361,6 +438,10 @@ func extractSingBoxBinary(archivePath, dstPath string) error {
 			out.Close()
 			return err
 		}
-		return out.Close()
+		if err := out.Close(); err != nil {
+			return err
+		}
+		// OpenFile 的 perm 会被 umask 削减，显式 Chmod 保证最终权限确定。
+		return os.Chmod(dstPath, singbox.BinaryFilePerm)
 	}
 }

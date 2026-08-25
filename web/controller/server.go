@@ -1,8 +1,12 @@
 package controller
 
 import (
-	"github.com/gin-gonic/gin"
+	"net/http"
 	"time"
+
+	"github.com/gin-gonic/gin"
+
+	"x-ui/web/entity"
 	"x-ui/web/global"
 	"x-ui/web/service"
 )
@@ -68,7 +72,7 @@ func (a *ServerController) getCoreVersion(c *gin.Context) {
 
 	versions, err := a.serverService.GetCoreVersions()
 	if err != nil {
-		jsonMsg(c, "获取版本", err)
+		jsonMsg(c, I18n(c, "op_get_version"), err)
 		return
 	}
 
@@ -78,8 +82,17 @@ func (a *ServerController) getCoreVersion(c *gin.Context) {
 	jsonObj(c, versions, nil)
 }
 
+// installCore 安装指定版本的 sing-box 内核。
+// 版本号在发起任何网络/文件操作之前先过白名单，非法输入直接以 400 拒绝。
 func (a *ServerController) installCore(c *gin.Context) {
 	version := c.Param("version")
+	if _, err := service.ValidateCoreVersion(version); err != nil {
+		c.JSON(http.StatusBadRequest, entity.Msg{
+			Success: false,
+			Msg:     I18n(c, "op_install_core") + ": " + I18n(c, "err_invalid_version"),
+		})
+		return
+	}
 	err := a.serverService.UpdateCore(version)
-	jsonMsg(c, "安装 sing-box", err)
+	jsonMsg(c, I18n(c, "op_install_core"), err)
 }

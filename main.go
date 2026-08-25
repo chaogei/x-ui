@@ -7,7 +7,6 @@ import (
 	"os"
 	"os/signal"
 	"syscall"
-	_ "unsafe"
 	"x-ui/config"
 	"x-ui/database"
 	"x-ui/logger"
@@ -95,30 +94,36 @@ func resetSetting() {
 	}
 }
 
+// showSetting 打印当前面板设置。
+//
+// 密码字段永远不会被打印：数据库里存的是 bcrypt 哈希，把它当"密码"回显既
+// 无法用于登录，又等于把可离线爆破的哈希输出到终端与运维日志里。
+// 用户忘记密码时的正确路径是 `x-ui setting -username X -password Y` 重设。
 func showSetting(show bool) {
-	if show {
-		settingService := service.SettingService{}
-		port, err := settingService.GetPort()
-		if err != nil {
-			fmt.Println("get current port fialed,error info:", err)
-		}
-		userService := service.UserService{}
-		userModel, err := userService.GetFirstUser()
-		if err != nil {
-			fmt.Println("get current user info failed,error info:", err)
-		}
-		username := userModel.Username
-		userpasswd := userModel.Password
-		if (username == "") || (userpasswd == "") {
-			fmt.Println("current username or password is empty")
-		}
-		fmt.Println("current pannel settings as follows:")
-		fmt.Println("username:", username)
-		fmt.Println("userpasswd:", userpasswd)
-		fmt.Println("port:", port)
+	if !show {
+		return
 	}
+	settingService := service.SettingService{}
+	port, err := settingService.GetPort()
+	if err != nil {
+		fmt.Println("get current port failed, error info:", err)
+	}
+	userService := service.UserService{}
+	userModel, err := userService.GetFirstUser()
+	if err != nil {
+		fmt.Println("get current user info failed, error info:", err)
+		return
+	}
+	if userModel.Username == "" || userModel.Password == "" {
+		fmt.Println("current username or password is empty")
+	}
+	fmt.Println("current panel settings as follows:")
+	fmt.Println("username:", userModel.Username)
+	fmt.Println("password: ******** (bcrypt hash, not recoverable)")
+	fmt.Println("port:", port)
 }
 
+// updateTgbotEnableSts 开关 Telegram 通知，由 `x-ui setting -enabletgbot` 驱动。
 func updateTgbotEnableSts(status bool) {
 	settingService := service.SettingService{}
 	currentTgSts, err := settingService.GetTgbotenabled()
@@ -127,16 +132,14 @@ func updateTgbotEnableSts(status bool) {
 		return
 	}
 	logger.Infof("current enabletgbot status[%v],need update to status[%v]", currentTgSts, status)
-	if currentTgSts != status {
-		err := settingService.SetTgbotenabled(status)
-		if err != nil {
-			fmt.Println(err)
-			return
-		} else {
-			logger.Infof("SetTgbotenabled[%v] success", status)
-		}
+	if currentTgSts == status {
+		return
 	}
-	return
+	if err := settingService.SetTgbotenabled(status); err != nil {
+		fmt.Println(err)
+		return
+	}
+	logger.Infof("SetTgbotenabled[%v] success", status)
 }
 
 func updateTgbotSetting(tgBotToken string, tgBotChatid int, tgBotRuntime string) {
@@ -277,6 +280,10 @@ func main() {
 		}
 		if (tgbottoken != "") || (tgbotchatid != 0) || (tgbotRuntime != "") {
 			updateTgbotSetting(tgbottoken, tgbotchatid, tgbotRuntime)
+		}
+		// -enabletgbot 之前只被解析、从不生效；现在真正落库。
+		if enabletgbot {
+			updateTgbotEnableSts(true)
 		}
 	default:
 		fmt.Println("except 'run' or 'setting' subcommands")

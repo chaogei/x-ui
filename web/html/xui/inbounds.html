@@ -18,11 +18,13 @@
     <a-layout id="content-layout">
         <a-layout-content>
             <a-spin :spinning="spinning" :delay="500" tip="loading">
+                {{ if .initial_credentials }}
                 <transition name="list" appear>
-                    <a-tag v-if="false" color="red" style="margin-bottom: 10px">
-                        Please go to the panel settings as soon as possible to modify the username and password, otherwise there may be a risk of leaking account information
-                    </a-tag>
+                    <a-alert type="error" show-icon style="margin-bottom: 10px"
+                             message='{{ i18n "warn_initial_credentials" }}'>
+                    </a-alert>
                 </transition>
+                {{ end }}
                 <transition name="list" appear>
                     <a-card hoverable style="margin-bottom: 20px;">
                         <a-row>

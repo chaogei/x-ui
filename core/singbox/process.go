@@ -8,7 +8,6 @@ import (
 	"errors"
 	"fmt"
 	"io"
-	"io/fs"
 	"net"
 	"os"
 	"os/exec"
@@ -43,6 +42,11 @@ const (
 	logLineCap = 200
 	// graceful 停机时给 sing-box 发送 SIGTERM 后最多等待多久。
 	gracefulStopTimeout = 5 * time.Second
+	// ConfigFilePerm 是生成的 sing-box 配置文件权限：仅 owner 可读写。
+	ConfigFilePerm os.FileMode = 0o600
+	configFilePerm             = ConfigFilePerm
+	// BinaryFilePerm 是安装的 sing-box 内核二进制权限：仅 owner 可读写执行。
+	BinaryFilePerm os.FileMode = 0o700
 )
 
 // Process 是 core.Core 的 sing-box 实现。
@@ -281,8 +285,14 @@ func (p *Process) Start() (err error) {
 		return common.NewErrorf("生成 sing-box 配置文件失败: %v", err)
 	}
 	configPath := GetConfigPath()
-	if err = os.WriteFile(configPath, data, fs.ModePerm); err != nil {
+	// 配置里含所有入站的用户凭证（uuid / password / reality private_key），
+	// 必须是 owner-only；历史实现用 fs.ModePerm(0777) 让同机任意用户可读写。
+	if err = os.WriteFile(configPath, data, configFilePerm); err != nil {
 		return common.NewErrorf("写入配置文件失败: %v", err)
+	}
+	// WriteFile 只在创建时应用 perm；已存在的旧文件（可能是 0777 遗留）需显式收紧。
+	if err = os.Chmod(configPath, configFilePerm); err != nil {
+		return common.NewErrorf("收紧配置文件权限失败: %v", err)
 	}
 
 	ctx, cancel := context.WithCancel(context.Background())

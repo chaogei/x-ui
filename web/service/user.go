@@ -75,13 +75,37 @@ func (s *UserService) UpdateUser(id int, username string, password string) error
 		return err
 	}
 	db := database.GetDB()
-	return db.Model(model.User{}).
+	if err := db.Model(model.User{}).
 		Where("id = ?", id).
 		Updates(map[string]interface{}{
 			"username": username,
 			"password": hashed,
 		}).
-		Error
+		Error; err != nil {
+		return err
+	}
+	// 用户已自行设置口令，清除"仍在使用首启随机口令"的告警标记。
+	if err := database.MarkInitialCredentials(false); err != nil {
+		logger.Warning("clear initial credentials flag failed:", err)
+	}
+	return nil
+}
+
+// UsingInitialCredentials 返回当前管理员口令是否仍是首次启动自动生成的随机值。
+// 面板据此在入站列表页顶部显示提醒；读取失败时保守返回 false（不打扰用户）。
+func (s *UserService) UsingInitialCredentials() bool {
+	db := database.GetDB()
+	if db == nil {
+		return false
+	}
+	setting := &model.Setting{}
+	err := db.Model(model.Setting{}).
+		Where("key = ?", database.SettingKeyInitialCredentials).
+		First(setting).Error
+	if err != nil {
+		return false
+	}
+	return setting.Value == "true"
 }
 
 func (s *UserService) UpdateFirstUser(username string, password string) error {
@@ -106,5 +130,11 @@ func (s *UserService) UpdateFirstUser(username string, password string) error {
 	}
 	user.Username = username
 	user.Password = hashed
-	return db.Save(user).Error
+	if err := db.Save(user).Error; err != nil {
+		return err
+	}
+	if err := database.MarkInitialCredentials(false); err != nil {
+		logger.Warning("clear initial credentials flag failed:", err)
+	}
+	return nil
 }

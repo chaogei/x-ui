@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 	"x-ui/database"
 	"x-ui/database/model"
@@ -20,20 +21,32 @@ import (
 //go:embed config.json
 var coreTemplateConfig string
 
+// secretKey 是存放 session cookie store 密钥的 settings 键。
+// 它不属于 defaultValueMap：默认值必须是 CSPRNG 产物且只生成一次，
+// 参见 GetSecret 的惰性生成 + 持久化逻辑。
+const secretKey = "secret"
+
+// secretBytes 是 session cookie 密钥的字节长度。
+const secretBytes = 32
+
 var defaultValueMap = map[string]string{
 	"coreTemplateConfig": coreTemplateConfig,
 	"webListen":          "",
 	"webPort":            "54321",
 	"webCertFile":        "",
 	"webKeyFile":         "",
-	"secret":             random.Seq(32),
 	"webBasePath":        "/",
+	"webTrustedProxies":  "",
 	"timeLocation":       "Asia/Shanghai",
 	"tgBotEnable":        "false",
 	"tgBotToken":         "",
 	"tgBotChatId":        "0",
 	"tgRunTime":          "",
 }
+
+// secretMu 串行化 GetSecret 的「读-生成-写」竞态：
+// 多个请求同时首次访问时，只允许一个生成并落库。
+var secretMu sync.Mutex
 
 type SettingService struct {
 }
@@ -243,15 +256,59 @@ func (s *SettingService) GetKeyFile() (string, error) {
 	return s.getString("webKeyFile")
 }
 
+// GetSecret 返回 session cookie store 的密钥。
+//
+// 首次调用时用 crypto/rand 生成 32 字节并持久化到 settings 表；
+// 之后固定复用该值，保证面板重启后已登录会话仍然有效。
+// 绝不会在 package init 阶段用弱随机源预生成。
 func (s *SettingService) GetSecret() ([]byte, error) {
-	secret, err := s.getString("secret")
-	if secret == defaultValueMap["secret"] {
-		err := s.saveSetting("secret", secret)
-		if err != nil {
-			logger.Warning("save secret failed:", err)
+	secretMu.Lock()
+	defer secretMu.Unlock()
+
+	setting, err := s.getSetting(secretKey)
+	if err == nil && setting.Value != "" {
+		return []byte(setting.Value), nil
+	}
+	if err != nil && !database.IsNotFound(err) {
+		return nil, err
+	}
+
+	generated, err := random.SecretString(secretBytes)
+	if err != nil {
+		return nil, err
+	}
+	if err := s.saveSetting(secretKey, generated); err != nil {
+		return nil, err
+	}
+	logger.Info("generated a new session secret")
+	return []byte(generated), nil
+}
+
+// GetTrustedProxies 返回被信任的反向代理 CIDR 列表。
+//
+// 默认为空：此时 gin 完全不信任 X-Forwarded-For / X-Real-IP，
+// c.ClientIP() 退化为 TCP 对端地址，登录限流无法被伪造头绕过。
+// 只有运维显式配置了前置代理网段，XFF 才会被采信。
+func (s *SettingService) GetTrustedProxies() ([]string, error) {
+	raw, err := s.getString("webTrustedProxies")
+	if err != nil {
+		return nil, err
+	}
+	return ParseTrustedProxies(raw), nil
+}
+
+// ParseTrustedProxies 把逗号/空白分隔的 CIDR 列表规整为切片，忽略空项。
+func ParseTrustedProxies(raw string) []string {
+	fields := strings.FieldsFunc(raw, func(r rune) bool {
+		return r == ',' || r == ' ' || r == '\t' || r == '\n' || r == '\r'
+	})
+	out := make([]string, 0, len(fields))
+	for _, f := range fields {
+		if f != "" {
+			out = append(out, f)
 		}
 	}
-	return []byte(secret), err
+	return out
 }
 
 func (s *SettingService) GetBasePath() (string, error) {
