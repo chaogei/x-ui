@@ -32,32 +32,57 @@ func NewStatsNotifyJob() *StatsNotifyJob {
 	return new(StatsNotifyJob)
 }
 
+// SendMsgToTgbot 同步发送一条 Telegram 通知。
+//
+// 首要约定：只有在设置里显式开启 tgBotEnable 时才会构造 bot 客户端。
+// 关闭状态下直接返回，绝不发起任何网络请求。
 func (j *StatsNotifyJob) SendMsgToTgbot(msg string) {
-	//Telegram bot basic info
+	enabled, err := j.settingService.GetTgbotenabled()
+	if err != nil {
+		logTgError("read tgBotEnable failed", err)
+		return
+	}
+	if !enabled {
+		return
+	}
+
 	tgBottoken, err := j.settingService.GetTgBotToken()
 	if err != nil {
-		logger.Warning("sendMsgToTgbot failed,GetTgBotToken fail:", err)
+		logTgError("read tgBotToken failed", err)
+		return
+	}
+	if tgBottoken == "" {
+		logger.Warning("telegram: bot enabled but token is empty, skip notify")
 		return
 	}
 	tgBotid, err := j.settingService.GetTgBotChatId()
 	if err != nil {
-		logger.Warning("sendMsgToTgbot failed,GetTgBotChatId fail:", err)
+		logTgError("read tgBotChatId failed", err)
 		return
 	}
 
-	bot, err := tgbotapi.NewBotAPI(tgBottoken)
+	bot, err := getBot(tgBottoken)
 	if err != nil {
-		fmt.Println("get tgbot error:", err)
+		logTgError("init bot failed", err)
 		return
 	}
-	bot.Debug = true
-	fmt.Printf("Authorized on account %s", bot.Self.UserName)
-	info := tgbotapi.NewMessage(int64(tgBotid), msg)
-	//msg.ReplyToMessageID = int(tgBotid)
-	bot.Send(info)
+	if _, err := bot.Send(tgbotapi.NewMessage(int64(tgBotid), msg)); err != nil {
+		logTgError("send message failed", err)
+	}
 }
 
-//Here run is a interface method of Job interface
+// SendMsgToTgbotAsync 在独立 goroutine 里投递通知。
+//
+// 登录请求的 HTTP 路径绝不能因为 Telegram 不可达而阻塞：
+// 即便 bot.Send 卡到超时（客户端已设 10s Timeout），用户看到的登录响应也不受影响。
+func (j *StatsNotifyJob) SendMsgToTgbotAsync(msg string) {
+	go func() {
+		defer common.Recover("tgbot notify")
+		j.SendMsgToTgbot(msg)
+	}()
+}
+
+// Here run is a interface method of Job interface
 func (j *StatsNotifyJob) Run() {
 	if !j.coreService.IsCoreRunning() {
 		return
@@ -66,7 +91,7 @@ func (j *StatsNotifyJob) Run() {
 	//get hostname
 	name, err := os.Hostname()
 	if err != nil {
-		fmt.Println("get hostname error:", err)
+		logTgError("get hostname failed", err)
 		return
 	}
 	info = fmt.Sprintf("主机名称:%s\r\n", name)
@@ -74,7 +99,7 @@ func (j *StatsNotifyJob) Run() {
 	var ip string
 	netInterfaces, err := net.Interfaces()
 	if err != nil {
-		fmt.Println("net.Interfaces failed, err:", err.Error())
+		logTgError("list network interfaces failed", err)
 		return
 	}
 
@@ -116,7 +141,14 @@ func (j *StatsNotifyJob) Run() {
 	j.SendMsgToTgbot(info)
 }
 
+// UserLoginNotify 推送面板登录提醒。
+//
+// 在做任何工作（含取主机名）之前先检查 tgBotEnable：登录是热路径，
+// 未启用 Telegram 的部署不应为此付出任何代价。
 func (j *StatsNotifyJob) UserLoginNotify(username string, ip string, time string, status LoginStatus) {
+	if enabled, err := j.settingService.GetTgbotenabled(); err != nil || !enabled {
+		return
+	}
 	if username == "" || ip == "" || time == "" {
 		logger.Warning("UserLoginNotify failed,invalid info")
 		return
@@ -125,7 +157,7 @@ func (j *StatsNotifyJob) UserLoginNotify(username string, ip string, time string
 	//get hostname
 	name, err := os.Hostname()
 	if err != nil {
-		fmt.Println("get hostname error:", err)
+		logTgError("get hostname failed", err)
 		return
 	}
 	if status == LoginSuccess {
@@ -136,5 +168,5 @@ func (j *StatsNotifyJob) UserLoginNotify(username string, ip string, time string
 	msg += fmt.Sprintf("时间:%s\r\n", time)
 	msg += fmt.Sprintf("用户:%s\r\n", username)
 	msg += fmt.Sprintf("IP:%s\r\n", ip)
-	j.SendMsgToTgbot(msg)
+	j.SendMsgToTgbotAsync(msg)
 }

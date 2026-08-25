@@ -4,6 +4,7 @@ import (
 	"github.com/gin-gonic/gin"
 
 	"x-ui/core/singbox/spec"
+	"x-ui/web/service"
 )
 
 // ProtocolController 暴露 sing-box 协议元数据，作为前端 ProtocolSpec 消费的权威来源。
@@ -25,6 +26,16 @@ func NewProtocolController(g *gin.RouterGroup) *ProtocolController {
 func (a *ProtocolController) initRouter(g *gin.RouterGroup) {
 	g = g.Group("/api")
 	g.GET("/protocols", a.listProtocols)
+	g.POST("/reality/keypair", a.realityKeyPair)
+}
+
+// realityKeyPair 生成一对全新的 Reality X25519 密钥。
+//
+// 前端「生成密钥」按钮调用本接口后同时填入 private_key 与 public_key，
+// 保证两者天然匹配——分享链接里的 pbk 参数因此不可能再为空或错配。
+func (a *ProtocolController) realityKeyPair(c *gin.Context) {
+	pair, err := service.GenerateRealityKeyPair()
+	jsonObj(c, pair, err)
 }
 
 // listProtocols 返回全部协议元数据，顺序与注册表 order 保持一致。

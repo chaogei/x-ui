@@ -74,6 +74,20 @@
                 return inModal.dbInbound;
             }
         },
+        methods: {
+            // 由后端一次性生成配套的 Reality X25519 密钥对。
+            // 两个字段同源写入，用户不可能再填出 public_key 与 private_key 不匹配的组合
+            // （错配只会在客户端连不上时才暴露，极难排查）。
+            async genRealityKeyPair(inbound) {
+                const msg = await HttpUtil.post('/xui/api/reality/keypair');
+                if (!msg.success || !msg.obj) {
+                    return;
+                }
+                const reality = inbound.settings.tls.reality;
+                reality.private_key = msg.obj.private_key;
+                reality.public_key = msg.obj.public_key;
+            },
+        },
     });
 
 </script>

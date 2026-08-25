@@ -55,12 +55,15 @@ func (s *InboundService) checkPortConflict(port int, protocol model.Protocol, ig
 }
 
 func (s *InboundService) AddInbound(inbound *model.Inbound) error {
+	if err := ValidateInbound(inbound); err != nil {
+		return err
+	}
 	conflict, err := s.checkPortConflict(inbound.Port, inbound.Protocol, 0)
 	if err != nil {
 		return err
 	}
 	if conflict != "" {
-		return common.NewErrorf("端口 %d 已被协议 %s 占用（与 %s 网络类型冲突）", inbound.Port, conflict, inbound.Protocol)
+		return common.NewErrorf("port %d is already used by protocol %s (conflicting network type with %s)", inbound.Port, conflict, inbound.Protocol)
 	}
 	db := database.GetDB()
 	return db.Save(inbound).Error
@@ -68,12 +71,15 @@ func (s *InboundService) AddInbound(inbound *model.Inbound) error {
 
 func (s *InboundService) AddInbounds(inbounds []*model.Inbound) error {
 	for _, inbound := range inbounds {
+		if err := ValidateInbound(inbound); err != nil {
+			return err
+		}
 		conflict, err := s.checkPortConflict(inbound.Port, inbound.Protocol, 0)
 		if err != nil {
 			return err
 		}
 		if conflict != "" {
-			return common.NewErrorf("端口 %d 已被协议 %s 占用（与 %s 网络类型冲突）", inbound.Port, conflict, inbound.Protocol)
+			return common.NewErrorf("port %d is already used by protocol %s (conflicting network type with %s)", inbound.Port, conflict, inbound.Protocol)
 		}
 	}
 
@@ -114,12 +120,15 @@ func (s *InboundService) GetInbound(id int) (*model.Inbound, error) {
 }
 
 func (s *InboundService) UpdateInbound(inbound *model.Inbound) error {
+	if err := ValidateInbound(inbound); err != nil {
+		return err
+	}
 	conflict, err := s.checkPortConflict(inbound.Port, inbound.Protocol, inbound.Id)
 	if err != nil {
 		return err
 	}
 	if conflict != "" {
-		return common.NewErrorf("端口 %d 已被协议 %s 占用（与 %s 网络类型冲突）", inbound.Port, conflict, inbound.Protocol)
+		return common.NewErrorf("port %d is already used by protocol %s (conflicting network type with %s)", inbound.Port, conflict, inbound.Protocol)
 	}
 
 	oldInbound, err := s.GetInbound(inbound.Id)

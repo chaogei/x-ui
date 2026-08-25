@@ -32,6 +32,19 @@
             <a-form-item label="private_key">
                 <a-input v-model.trim="inbound.settings.tls.reality.private_key"></a-input>
             </a-form-item>
+            <!--
+              public_key 只用于生成分享链接的 pbk 参数，不会写入 sing-box 配置，
+              但缺了它客户端无法握手，因此与 private_key 同为必填。
+              「生成密钥对」直接调后端 X25519 生成，杜绝手工填写导致的两者错配。
+            -->
+            <a-form-item label="public_key">
+                <a-input v-model.trim="inbound.settings.tls.reality.public_key"></a-input>
+            </a-form-item>
+            <a-form-item>
+                <a-button type="primary" size="small" @click="genRealityKeyPair(inbound)">
+                    {{ i18n "proto_reality_gen_keys" }}
+                </a-button>
+            </a-form-item>
             <a-form-item label='{{ i18n "proto_short_id" }}'>
                 <a-input :value="inbound.settings.tls.reality.short_id.join(',')"
                          @change="e => inbound.settings.tls.reality.short_id = (e.target.value||'').split(',').map(s=>s.trim())"></a-input>

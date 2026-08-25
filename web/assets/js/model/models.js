@@ -141,6 +141,9 @@ class AllSetting {
         this.webCertFile = "";
         this.webKeyFile = "";
         this.webBasePath = "/";
+        // 面板前置反向代理的 CIDR 白名单，逗号分隔。留空 = 不信任任何代理，
+        // 此时 X-Forwarded-For 被完全忽略（登录限流无法被伪造头绕过）。
+        this.webTrustedProxies = "";
         this.tgBotEnable = false;
         this.tgBotToken = "";
         this.tgBotChatId = 0;

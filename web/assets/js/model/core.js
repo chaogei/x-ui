@@ -106,15 +106,23 @@ class TlsBlock extends CoreCommonClass {
     }
 }
 
-/** Reality 子块（仅 VLESS inbound + TLS 时使用）。 */
+/**
+ * Reality 子块（仅 VLESS inbound + TLS 时使用）。
+ *
+ * public_key 不是 sing-box inbound 的字段（服务端只需要 private_key），
+ * 但分享链接的 `pbk` 参数必须带上它，客户端才能完成 Reality 握手。
+ * 早期版本漏掉了这个字段，导致 genVlessLink 生成的链接里 pbk 恒为空、
+ * 所有 Reality 节点都连不上，因此这里必须持久化保存。
+ */
 class RealityBlock extends CoreCommonClass {
     constructor(enabled=false, handshakeServer='', handshakePort=443,
-                privateKey='', shortIds=[''], maxTimeDifference='') {
+                privateKey='', publicKey='', shortIds=[''], maxTimeDifference='') {
         super();
         this.enabled = enabled;
         this.handshake_server = handshakeServer;
         this.handshake_port = handshakePort;
         this.private_key = privateKey;
+        this.public_key = publicKey;
         this.short_id = shortIds;
         this.max_time_difference = maxTimeDifference;
     }
@@ -124,6 +132,7 @@ class RealityBlock extends CoreCommonClass {
             (json.handshake && json.handshake.server) || '',
             (json.handshake && json.handshake.server_port) || 443,
             json.private_key || '',
+            json.public_key || '',
             json.short_id || [''],
             json.max_time_difference || '',
         );
@@ -133,6 +142,7 @@ class RealityBlock extends CoreCommonClass {
             enabled: true,
             handshake: { server: this.handshake_server, server_port: Number(this.handshake_port) || 443 },
             private_key: this.private_key,
+            public_key: this.public_key,
             short_id: this.short_id && this.short_id.length ? this.short_id : [''],
         };
         if (this.max_time_difference) out.max_time_difference = this.max_time_difference;

@@ -40,7 +40,7 @@ func (a *SettingController) initRouter(g *gin.RouterGroup) {
 func (a *SettingController) getAllSetting(c *gin.Context) {
 	allSetting, err := a.settingService.GetAllSetting()
 	if err != nil {
-		jsonMsg(c, "获取设置", err)
+		jsonMsg(c, I18n(c, "op_get_setting"), err)
 		return
 	}
 	jsonObj(c, allSetting, nil)
@@ -50,7 +50,7 @@ func (a *SettingController) updateSetting(c *gin.Context) {
 	allSetting := &entity.AllSetting{}
 	err := c.ShouldBind(allSetting)
 	if err != nil {
-		jsonMsg(c, "修改设置", err)
+		jsonMsg(c, I18n(c, "op_update_setting"), err)
 		return
 	}
 	err = a.settingService.UpdateAllSetting(allSetting)
@@ -61,7 +61,7 @@ func (a *SettingController) updateSetting(c *gin.Context) {
 			"error": err.Error(),
 		})
 	}
-	jsonMsg(c, "修改设置", err)
+	jsonMsg(c, I18n(c, "op_update_setting"), err)
 }
 
 // updateUser 修改面板账号。
@@ -71,7 +71,7 @@ func (a *SettingController) updateUser(c *gin.Context) {
 	form := &updateUserForm{}
 	err := c.ShouldBind(form)
 	if err != nil {
-		jsonMsg(c, "修改用户", err)
+		jsonMsg(c, I18n(c, "op_update_user"), err)
 		return
 	}
 	user := session.GetLoginUser(c)
@@ -80,11 +80,11 @@ func (a *SettingController) updateUser(c *gin.Context) {
 		service.Audit(c, service.EventUserUpdate, "fail", map[string]interface{}{
 			"reason": "wrong_old_credentials",
 		})
-		jsonMsg(c, "修改用户", errors.New(I18n(c, "auth_wrong_old_credentials")))
+		jsonMsg(c, I18n(c, "op_update_user"), errors.New(I18n(c, "auth_wrong_old_credentials")))
 		return
 	}
 	if form.NewUsername == "" || form.NewPassword == "" {
-		jsonMsg(c, "修改用户", errors.New(I18n(c, "auth_new_empty")))
+		jsonMsg(c, I18n(c, "op_update_user"), errors.New(I18n(c, "auth_new_empty")))
 		return
 	}
 	err = a.userService.UpdateUser(user.Id, form.NewUsername, form.NewPassword)
@@ -100,11 +100,11 @@ func (a *SettingController) updateUser(c *gin.Context) {
 			"error": err.Error(),
 		})
 	}
-	jsonMsg(c, "修改用户", err)
+	jsonMsg(c, I18n(c, "op_update_user"), err)
 }
 
 func (a *SettingController) restartPanel(c *gin.Context) {
 	service.Audit(c, service.EventPanelRestart, "ok", nil)
 	err := a.panelService.RestartPanel(time.Second * 3)
-	jsonMsg(c, "重启面板", err)
+	jsonMsg(c, I18n(c, "op_restart_panel"), err)
 }
