@@ -104,9 +104,18 @@ func (s *InboundService) AddInbounds(inbounds []*model.Inbound) error {
 	return nil
 }
 
+// DelInbound 删除入站，并连带清理其下的客户端。
+//
+// 不清理的话，孤儿客户端会继续占着全局唯一的 email 与 sub_token：
+// 那些订阅链接仍然可用，却指向一条不存在的入站。
 func (s *InboundService) DelInbound(id int) error {
 	db := database.GetDB()
-	return db.Delete(model.Inbound{}, id).Error
+	return db.Transaction(func(tx *gorm.DB) error {
+		if err := tx.Where("inbound_id = ?", id).Delete(model.Client{}).Error; err != nil {
+			return err
+		}
+		return tx.Delete(model.Inbound{}, id).Error
+	})
 }
 
 func (s *InboundService) GetInbound(id int) (*model.Inbound, error) {

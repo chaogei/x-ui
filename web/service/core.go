@@ -5,9 +5,13 @@ import (
 	"errors"
 	"fmt"
 	"sync"
+	"time"
+
 	"x-ui/core"
 	"x-ui/core/singbox"
+	"x-ui/database/model"
 	"x-ui/logger"
+	"x-ui/util/json_util"
 
 	"go.uber.org/atomic"
 )
@@ -28,6 +32,7 @@ var state = &coreState{}
 
 type CoreService struct {
 	inboundService InboundService
+	clientService  ClientService
 	settingService SettingService
 }
 
@@ -79,7 +84,16 @@ func (s *CoreService) GetCoreVersion() string {
 	return state.proc.GetVersion()
 }
 
-// GetCoreConfig 根据设置模板 + 当前启用的入站记录拼装完整 sing-box 配置。
+// GetCoreConfig 根据设置模板 + 当前启用的入站与客户端拼装完整 sing-box 配置。
+//
+// 多用户展开的规则：
+//   - 该入站在 clients 表里有可用客户端 → 用它们覆盖 settings 中的用户字段；
+//   - 一个可用客户端都没有 → settings 原样下发。后者既是老数据的迁移路径
+//     （凭证只存在于 settings 里），也让"客户端全部到期"退化成入站原有凭证
+//     而不是一份没有用户、谁都连不上的配置。
+//
+// 同时把统计白名单写回 experimental.v2ray_api.stats：sing-box 只为白名单里的
+// tag 与用户名建计数器，不写就永远统计不到任何字节。
 func (s *CoreService) GetCoreConfig() (*singbox.Config, error) {
 	tmpl, err := s.settingService.GetCoreTemplateConfig()
 	if err != nil {
@@ -94,16 +108,40 @@ func (s *CoreService) GetCoreConfig() (*singbox.Config, error) {
 	if err != nil {
 		return nil, err
 	}
+	clientsByInbound, err := s.clientService.ActiveClientsByInbound(time.Now().UnixMilli())
+	if err != nil {
+		return nil, err
+	}
+
+	statsInbounds := make([]string, 0, len(inbounds))
+	statsUsers := make([]string, 0)
+
 	for _, ib := range inbounds {
 		if !ib.Enable {
 			continue
 		}
+		clients := clientsByInbound[ib.Id]
+		settings, err := model.ApplyClients(ib.Protocol, ib.Settings, clients)
+		if err != nil {
+			return nil, fmt.Errorf("inbound %q: %w", ib.Tag, err)
+		}
+
 		built := ib.BuildSingBoxInbound()
+		built.Settings = json_util.RawMessage(settings)
 		if ib.Protocol.IsEndpoint() {
 			cfg.Endpoints = append(cfg.Endpoints, *built)
 		} else {
 			cfg.Inbounds = append(cfg.Inbounds, *built)
 		}
+
+		if ib.Tag != "" {
+			statsInbounds = append(statsInbounds, ib.Tag)
+		}
+		statsUsers = append(statsUsers, model.StatsUserNames(ib.Protocol, clients)...)
+	}
+
+	if err := cfg.SetStatsTargets(statsInbounds, statsUsers); err != nil {
+		return nil, fmt.Errorf("cannot enable sing-box traffic stats: %w", err)
 	}
 	return cfg, nil
 }

@@ -10,6 +10,7 @@ import (
 type CoreTrafficJob struct {
 	coreService    service.CoreService
 	inboundService service.InboundService
+	clientService  service.ClientService
 }
 
 func NewCoreTrafficJob() *CoreTrafficJob {
@@ -25,7 +26,12 @@ func (j *CoreTrafficJob) Run() {
 		logger.Warning("get sing-box traffic failed:", err)
 		return
 	}
+	// 同一批计数器同时携带 inbound 与 user 两个维度，各自入账各自的表。
+	// 两者会重复计同一批字节，这是有意的：入站看总量，客户端看配额。
 	if err := j.inboundService.AddTraffic(traffics); err != nil {
-		logger.Warning("add traffic failed:", err)
+		logger.Warning("add inbound traffic failed:", err)
+	}
+	if err := j.clientService.AddTraffic(traffics); err != nil {
+		logger.Warning("add client traffic failed:", err)
 	}
 }

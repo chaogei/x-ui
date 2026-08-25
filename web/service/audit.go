@@ -24,6 +24,22 @@ const (
 	EventInboundDelete = "inbound_delete"
 	EventSettingUpdate = "setting_update"
 	EventPanelRestart  = "panel_restart"
+
+	EventClientAdd          = "client_add"
+	EventClientUpdate       = "client_update"
+	EventClientDelete       = "client_delete"
+	EventClientResetTraffic = "client_reset_traffic"
+	// EventClientRotateToken 只记录 client_id：新旧订阅 token 都是凭证，
+	// 写进审计等于把它们复制到另一个更容易被读取的地方。
+	EventClientRotateToken = "client_rotate_token"
+
+	EventTwoFactorEnroll  = "twofactor_enroll"
+	EventTwoFactorEnable  = "twofactor_enable"
+	EventTwoFactorDisable = "twofactor_disable"
+	EventTwoFactorFail    = "twofactor_fail"
+	EventRecoveryCodeUsed = "recovery_code_used"
+
+	EventSubscriptionFetch = "subscription_fetch"
 )
 
 // auditPrefix 让审计行在混合日志流里仍能被 grep 精确定位。

@@ -137,6 +137,14 @@ func initSetting() error {
 	return db.AutoMigrate(&model.Setting{})
 }
 
+// initClient 建立多用户客户端表。
+//
+// 放在 initInbound 之后：clients.inbound_id 逻辑上指向 inbounds.id，
+// 建表顺序与依赖方向一致，便于将来加外键约束。
+func initClient() error {
+	return db.AutoMigrate(&model.Client{})
+}
+
 func InitDB(dbPath string) error {
 	dir := path.Dir(dbPath)
 	if err := os.MkdirAll(dir, dbDirPerm); err != nil {
@@ -172,6 +180,9 @@ func InitDB(dbPath string) error {
 		return err
 	}
 	if err := initInbound(); err != nil {
+		return err
+	}
+	if err := initClient(); err != nil {
 		return err
 	}
 

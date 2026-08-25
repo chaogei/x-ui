@@ -12,6 +12,7 @@ type XUIController struct {
 	userService service.UserService
 
 	inboundController *InboundController
+	clientController  *ClientController
 	settingController *SettingController
 	// protocolController 暴露 sing-box 协议元数据，供前端初始化时拉取，
 	// 作为 ProtocolSpec 的单一来源（SSoT）。
@@ -33,6 +34,7 @@ func (a *XUIController) initRouter(g *gin.RouterGroup) {
 	g.GET("/setting", a.setting)
 
 	a.inboundController = NewInboundController(g)
+	a.clientController = NewClientController(g)
 	a.settingController = NewSettingController(g)
 	a.protocolController = NewProtocolController(g)
 }
