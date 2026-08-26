@@ -74,6 +74,21 @@ jobs:
           go-version: ${{ env.GO_VERSION }}
           cache: true
 
+      # web/e2e_render_test.go 用 jsdom 真跑一遍打包产物，确认 Vue 挂得上、
+      # 页面渲染得出内容 —— 迁到 SPA 之后，这是唯一能发现"200 白页"的用例。
+      # 没有 node 时它会自己跳过，所以本地不装 Node 也能 go test；
+      # CI 里必须装上，否则那条护栏在最需要它的地方是静默失效的。
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/frontend/package-lock.json
+
+      - name: Install frontend dev dependencies
+        working-directory: web/frontend
+        run: npm ci
+
       # go.sum 曾经缺失 ~363 条目而没人发现，因为没有 CI。
       # -mod=readonly 会在 go.mod/go.sum 与源码不一致时直接失败。
       - name: Verify go.mod / go.sum are tidy
@@ -114,6 +129,9 @@ jobs:
       - name: Test
         env:
           CGO_ENABLED: 0
+          # 前端渲染用例在缺 node/jsdom 时会自己跳过。CI 里两者都装好了，
+          # 所以这里要求它必须真的跑起来，而不是悄悄跳过。
+          XUI_REQUIRE_RENDER_TEST: "1"
         run: go test -count=1 -timeout 15m ./...
 
       # -race 需要 cgo，ubuntu-latest 自带 gcc。
@@ -121,4 +139,5 @@ jobs:
       - name: Test (race)
         env:
           CGO_ENABLED: 1
+          XUI_REQUIRE_RENDER_TEST: "1"
         run: go test -race -count=1 -timeout 20m ./...

@@ -320,6 +320,11 @@ npm run build:fast     # 跳过 typecheck，只构建
 npm run watch          # 改文件即重新构建，配合下面的调试模式用
 ```
 
+装上 `node_modules` 之后，`go test ./web/` 会额外跑一条 jsdom 渲染用例
+（`web/e2e_render_test.go`）：起 httptest 面板取回四个页面，在 jsdom 里执行产物，
+断言 Vue 真的挂上且渲染出了内容。没装 Node 时它自动跳过——CI 里通过
+`XUI_REQUIRE_RENDER_TEST=1` 强制要求它必须真跑，免得护栏静默失效。
+
 产物 `web/assets/dist/xui.{js,css}` **是提交进仓库的**。这样没装 Node 的人
 `go build ./...` 出来的面板照样能用；代价是改完前端必须重新构建并提交，
 CI 有一条 job 专门做逐字节比对，陈旧了会直接失败。
@@ -370,8 +375,9 @@ CSRF 依旧是 `<meta name="csrf-token">` + axios 拦截器自动附带 `X-CSRF-
 
 单元测试另外用 golden 文件锁定 14 种协议的 sing-box 配置序列化结果，
 并对照 `web/frontend/src/models/` 校验前后端协议表一致——这两份表分处 Go 与
-TypeScript，没有编译期约束。另有一条用例确认 Vite 产物真的在二进制里
-（缺了它面板会返回 200 白页），以及 Vue 2 / antd 1.x 没有偷偷回来。
+TypeScript，没有编译期约束。另有几条用例确认 Vite 产物真的在二进制里、
+Vue 2 / antd 1.x 没有偷偷回来，以及产物在 jsdom 里真的能挂载并渲染出内容
+（迁到 SPA 之后，"200 白页"是纯 Go 用例结构性看不见的一类故障）。
 
 # 版本历史
 
