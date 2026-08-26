@@ -34,7 +34,11 @@ const GLASS_ELEVATED = 'rgba(19, 25, 44, 0.78)'
 const TEXT = 'rgba(255, 255, 255, 0.92)'
 const TEXT_SECONDARY = 'rgba(255, 255, 255, 0.72)'
 const TEXT_TERTIARY = 'rgba(255, 255, 255, 0.55)'
-const TEXT_QUATERNARY = 'rgba(255, 255, 255, 0.42)'
+/*
+  0.48 而不是暗色算法默认的 0.25：这一档同时是输入框 placeholder 的颜色，
+  默认值压在玻璃面板上只有 2.5:1 左右，离 AA 差得远。
+*/
+const TEXT_QUATERNARY = 'rgba(255, 255, 255, 0.48)'
 
 /**
  * 一套系统字体栈，不引 webfont。
