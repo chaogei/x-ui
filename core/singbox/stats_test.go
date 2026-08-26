@@ -1,6 +1,7 @@
 package singbox
 
 import (
+	"strings"
 	"testing"
 
 	"x-ui/core"
@@ -134,6 +135,30 @@ func TestAggregateTrafficKeepsInputOrder(t *testing.T) {
 		if got[i].Tag != want[i] {
 			t.Errorf("row %d tag = %q, want %q", i, got[i].Tag, want[i])
 		}
+	}
+}
+
+// grpc.NewClient is lazy, so this test needs no live sing-box or listening
+// socket. A closed client must fail locally instead of dialing, panicking, or
+// waiting for the ten-second RPC deadline.
+func TestClosedStatsClientFailsLocally(t *testing.T) {
+	client, err := newStatsClient(1)
+	if err != nil {
+		t.Fatalf("create lazy stats client: %v", err)
+	}
+	if err := client.Close(); err != nil {
+		t.Fatalf("close stats client: %v", err)
+	}
+
+	if _, err := client.QueryTraffic(true); err == nil {
+		t.Fatal("querying a closed stats client succeeded")
+	} else if !strings.Contains(err.Error(), "closed") {
+		t.Errorf("error = %q, want an explicit closed-client error", err)
+	}
+
+	// Cleanup paths can converge on Close; it must remain idempotent.
+	if err := client.Close(); err != nil {
+		t.Errorf("second Close returned %v", err)
 	}
 }
 

@@ -2,6 +2,7 @@ package database
 
 import (
 	"bytes"
+	"io"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -202,5 +203,25 @@ func TestSchemaIsCreated(t *testing.T) {
 		if !db.Migrator().HasTable(table) {
 			t.Errorf("table %q was not created", table)
 		}
+	}
+}
+
+// An absent path is a startup configuration error. It must not silently select
+// SQLite's special empty DSN or create a database in the process directory.
+func TestInitDBRejectsMissingPath(t *testing.T) {
+	t.Chdir(t.TempDir())
+	old := SetCredentialsOutput(io.Discard)
+	t.Cleanup(func() { SetCredentialsOutput(old) })
+	t.Cleanup(func() { _ = CloseDB() })
+
+	if err := InitDB(""); err == nil {
+		t.Fatal("InitDB accepted an empty database path")
+	}
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatalf("read working directory: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("an empty database path created files: %v", entries)
 	}
 }
