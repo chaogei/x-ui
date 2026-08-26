@@ -21,7 +21,10 @@ import (
 //
 // 同时抑制首启凭证公告的 stderr 输出（内容通过返回的 buffer 提供），
 // 避免 go test 的输出被大段横幅淹没。
-func InitDB(t *testing.T) (*gorm.DB, *bytes.Buffer) {
+//
+// 收 testing.TB 而不是 *testing.T：基准测试也需要一个真实的库，
+// 而它们要衡量的恰恰是每 10 秒一次的那批写。
+func InitDB(t testing.TB) (*gorm.DB, *bytes.Buffer) {
 	t.Helper()
 
 	dbPath := filepath.Join(t.TempDir(), "x-ui.db")

@@ -3,6 +3,7 @@ package service
 import (
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	"gorm.io/gorm"
@@ -234,23 +235,37 @@ func loadClientByEmail(t *testing.T, email string) *model.Client {
 // countUpdates 统计区间内执行了多少条 UPDATE 语句。
 //
 // 通过 gorm 回调实现：不需要驱动层的钩子，也不依赖日志格式。
+// 同时挂在 Update 与 Raw 两条链上——批量入账走的是 Exec（Raw），
+// 而别处的写仍然走 Updates（Update）。
 func countUpdates(t *testing.T) func() int {
 	t.Helper()
 
 	db := database.GetDB()
 	const name = "test:count_updates"
-	var count int
-	if err := db.Callback().Update().After("gorm:update").Register(name, func(tx *gorm.DB) {
+	var mu sync.Mutex
+	count := 0
+	tally := func(tx *gorm.DB) {
 		if strings.HasPrefix(strings.ToUpper(strings.TrimSpace(tx.Statement.SQL.String())), "UPDATE") {
+			mu.Lock()
 			count++
+			mu.Unlock()
 		}
-	}); err != nil {
-		t.Fatalf("register callback: %v", err)
+	}
+	if err := db.Callback().Update().After("gorm:update").Register(name, tally); err != nil {
+		t.Fatalf("register update callback: %v", err)
+	}
+	if err := db.Callback().Raw().After("gorm:raw").Register(name, tally); err != nil {
+		t.Fatalf("register raw callback: %v", err)
 	}
 	return func() int {
 		if err := db.Callback().Update().Remove(name); err != nil {
-			t.Fatalf("remove callback: %v", err)
+			t.Fatalf("remove update callback: %v", err)
 		}
+		if err := db.Callback().Raw().Remove(name); err != nil {
+			t.Fatalf("remove raw callback: %v", err)
+		}
+		mu.Lock()
+		defer mu.Unlock()
 		return count
 	}
 }
