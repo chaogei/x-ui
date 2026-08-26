@@ -207,7 +207,6 @@ func TestSchemaIsCreated(t *testing.T) {
 	}
 }
 
-<<<<<<< HEAD
 // TestConnectionPragmas 锁住连接级 pragma。
 //
 // 这些不是调优旋钮而是正确性前提：没有 WAL，每 10 秒一次的流量写事务
