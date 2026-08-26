@@ -41,7 +41,8 @@ func TestSecurityHeadersAlwaysPresent(t *testing.T) {
 }
 
 // TestContentSecurityPolicyBlocksTheImportantThings 只断言真正影响安全的指令。
-// script-src 里的 'unsafe-inline' 是 Vue2 模板的现实约束，不在断言范围内。
+// script-src 里的 'unsafe-inline' 是 app.html 那句内联引导脚本的现实约束，
+// 不在断言范围内。
 func TestContentSecurityPolicyBlocksTheImportantThings(t *testing.T) {
 	csp := serve(securityEngine(false)).Header().Get("Content-Security-Policy")
 
@@ -60,6 +61,12 @@ func TestContentSecurityPolicyBlocksTheImportantThings(t *testing.T) {
 	// 面板不该从第三方 CDN 拉脚本；'*' 会让整条策略形同虚设。
 	if strings.Contains(csp, "script-src *") || strings.Contains(csp, "default-src *") {
 		t.Errorf("CSP %q contains a wildcard source", csp)
+	}
+	// 'unsafe-eval' 是 Vue 2 在线编译模板留下的历史包袱，Vue 3 的产物不需要它。
+	// 它一旦回来，一个注入点就从"能插标签"升级成"能跑任意字符串"。
+	// TestE2EFrontendBootsWithoutUnsafeEval 证明前端确实不用它。
+	if strings.Contains(csp, "unsafe-eval") {
+		t.Errorf("CSP %q allows unsafe-eval; the Vue 3 bundle compiles its templates at build time", csp)
 	}
 }
 

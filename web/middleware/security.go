@@ -7,13 +7,18 @@ import (
 // contentSecurityPolicy 是与本面板实际资源加载方式匹配的 CSP。
 //
 // 说明：
-//   - 'unsafe-eval' 是 Vue 2 完整版编译 in-DOM 模板所必需的；
-//   - 'unsafe-inline' 是因为页面里存在大量内联 <script>/<style>（antd + Vue 用法），
-//     一次性去掉需要重写全部模板，超出本次修复范围；
+//   - 没有 'unsafe-eval'：面板早已不是 Vue 2 的在线模板编译器，Vue 3 的模板在
+//     构建期就编译成了渲染函数，运行时不碰 eval/Function。这条由
+//     TestE2EFrontendBootsWithoutUnsafeEval 把着——它让 jsdom 封掉这两样再跑
+//     一遍真实产物；
+//   - script-src 的 'unsafe-inline' 还留着，是为了 app.html 里那一句
+//     `window.__XUI__ = ...`。去掉它要给这个 script 发 nonce，并让 CSP 头随
+//     每次响应变化；
+//   - style-src 的 'unsafe-inline' 是 antd 的运行时样式注入所需，改不掉；
 //   - 关键收益在 default-src 'self'（禁止加载外部脚本）与 frame-ancestors 'none'
 //     （防点击劫持），这两项不依赖内联脚本的整改。
 const contentSecurityPolicy = "default-src 'self'; " +
-	"script-src 'self' 'unsafe-inline' 'unsafe-eval'; " +
+	"script-src 'self' 'unsafe-inline'; " +
 	"style-src 'self' 'unsafe-inline'; " +
 	"img-src 'self' data: blob:; " +
 	"font-src 'self' data:; " +
