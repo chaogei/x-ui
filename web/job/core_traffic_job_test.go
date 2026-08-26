@@ -4,6 +4,8 @@ import (
 	"strconv"
 	"testing"
 
+	"gorm.io/gorm"
+
 	"x-ui/core"
 	"x-ui/database/model"
 	"x-ui/testutil"
@@ -118,6 +120,40 @@ func TestBoundPendingKeepsTheHeaviestCounters(t *testing.T) {
 // 缓冲里的增量之所以还在内存里，是因为之前有一轮写库失败了；面板一停就
 // 再没有下一轮去重投它们。不冲这一次，用户白嫖的就不止一个周期。
 func TestFlushWritesTheRetryBufferOnShutdown(t *testing.T) {
+	db := seedLedger(t)
+
+	j := bufferedJob()
+	j.Flush()
+
+	assertLedger(t, db, 101, 202, 35, 46)
+
+	// 冲过的增量必须清掉：再冲一次不能把同一批字节记第二遍。
+	j.Flush()
+	assertLedger(t, db, 101, 202, 35, 46)
+}
+
+// TestRunRetriesTheBufferWhileTheCoreIsDown 覆盖内核不在跑的那一轮。
+//
+// 缓冲里的增量是之前写库失败留下的，与内核此刻的死活无关。以前这一轮
+// 在探活门那里就掉头走了，于是内核停多久这些字节就卡多久——面板先停机
+// 就全丢了。（测试进程里从来没有内核，所以这条路径是默认路径。）
+func TestRunRetriesTheBufferWhileTheCoreIsDown(t *testing.T) {
+	db := seedLedger(t)
+
+	j := bufferedJob()
+	j.Run()
+
+	assertLedger(t, db, 101, 202, 35, 46)
+	if len(j.pendingInbound) != 0 || len(j.pendingUser) != 0 {
+		t.Errorf("the buffer still holds %d inbound and %d client entries after a successful write",
+			len(j.pendingInbound), len(j.pendingUser))
+	}
+}
+
+// seedLedger 建一个入站与一个客户端，各自带一点历史流量。
+func seedLedger(t *testing.T) *gorm.DB {
+	t.Helper()
+
 	db, _ := testutil.InitDB(t)
 	if err := db.Create(&model.Inbound{
 		Tag: "inbound-443", Protocol: model.VMess, Port: 443,
@@ -131,36 +167,34 @@ func TestFlushWritesTheRetryBufferOnShutdown(t *testing.T) {
 	}).Error; err != nil {
 		t.Fatalf("seed client: %v", err)
 	}
+	return db
+}
 
+// bufferedJob 返回一个重投缓冲里攒着两条增量的任务。
+func bufferedJob() *CoreTrafficJob {
 	j := NewCoreTrafficJob()
 	j.pendingInbound = []*core.Traffic{{IsInbound: true, Tag: "inbound-443", Up: 100, Down: 200}}
 	j.pendingUser = []*core.Traffic{{IsUser: true, Tag: "alice@example.com", Up: 30, Down: 40}}
+	return j
+}
 
-	j.Flush()
+func assertLedger(t *testing.T, db *gorm.DB, inUp, inDown, cliUp, cliDown int64) {
+	t.Helper()
 
 	var inbound model.Inbound
 	if err := db.Where("tag = ?", "inbound-443").First(&inbound).Error; err != nil {
 		t.Fatalf("read inbound back: %v", err)
 	}
-	if inbound.Up != 101 || inbound.Down != 202 {
-		t.Errorf("inbound = %d/%d, want the buffered bytes folded in (101/202)", inbound.Up, inbound.Down)
+	if inbound.Up != inUp || inbound.Down != inDown {
+		t.Errorf("inbound = %d/%d, want %d/%d", inbound.Up, inbound.Down, inUp, inDown)
 	}
 
 	var client model.Client
 	if err := db.Where("email = ?", "alice@example.com").First(&client).Error; err != nil {
 		t.Fatalf("read client back: %v", err)
 	}
-	if client.Up != 35 || client.Down != 46 {
-		t.Errorf("client = %d/%d, want the buffered bytes folded in (35/46)", client.Up, client.Down)
-	}
-
-	// 冲过的增量必须清掉：再冲一次不能把同一批字节记第二遍。
-	j.Flush()
-	if err := db.Where("tag = ?", "inbound-443").First(&inbound).Error; err != nil {
-		t.Fatalf("re-read inbound: %v", err)
-	}
-	if inbound.Up != 101 {
-		t.Errorf("inbound = %d after a second flush, want the buffer to have been cleared", inbound.Up)
+	if client.Up != cliUp || client.Down != cliDown {
+		t.Errorf("client = %d/%d, want %d/%d", client.Up, client.Down, cliUp, cliDown)
 	}
 }
 

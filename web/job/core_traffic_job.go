@@ -49,12 +49,19 @@ func (j *CoreTrafficJob) Run() {
 	}
 	defer j.running.Store(false)
 
-	if !j.coreService.IsCoreRunning() {
-		return
+	var traffics []*core.Traffic
+	if j.coreService.IsCoreRunning() {
+		fresh, err := j.coreService.GetCoreTraffic()
+		if err != nil {
+			logger.Warning("get sing-box traffic failed:", err)
+		} else {
+			traffics = fresh
+		}
 	}
-	traffics, err := j.coreService.GetCoreTraffic()
-	if err != nil {
-		logger.Warning("get sing-box traffic failed:", err)
+	// 内核不在跑也要往下走。缓冲里的增量是之前某一轮写库失败留下的，
+	// 跟内核此刻活不活着没有关系；在这里掉头就走，等于让它们一直卡到
+	// 内核回来为止——而面板要是先停机，就全丢了。
+	if len(traffics) == 0 && len(j.pendingInbound) == 0 && len(j.pendingUser) == 0 {
 		return
 	}
 

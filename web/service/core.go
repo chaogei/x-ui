@@ -188,16 +188,26 @@ func (s *CoreService) RestartCore(force bool) error {
 		return err
 	}
 
+	// 杀掉进程之前先把内核侧的计数器收走，否则这一段流量随进程一起蒸发。
+	// 这一步在锁外做，理由见 drainTraffic。
+	outgoing, skip := s.pickDrainTarget(force, cfg)
+	if skip {
+		logger.Debug("sing-box config unchanged, skip restart")
+		return nil
+	}
+	s.drainTraffic(outgoing)
+
 	state.mu.Lock()
 	defer state.mu.Unlock()
 
 	if state.proc != nil {
+		// 重新判定一次：刚才那段无锁的收流量期间，别人可能已经替我们
+		// 换过进程了。上面那次判定只是为了省掉一次没必要的 gRPC 往返，
+		// 这一次才作数。
 		if !force && state.proc.IsRunning() && state.proc.GetConfig().Equals(cfg) {
 			logger.Debug("sing-box config unchanged, skip restart")
 			return nil
 		}
-		// 杀掉进程之前先把内核侧的计数器收走，否则这一段流量随进程一起蒸发。
-		s.drainTrafficLocked(state.proc)
 		// 不管进程是否还活着都要 Close：崩溃退出的实例仍握着一条到
 		// v2ray_api 的 gRPC 连接，它会在后台永远重连一个没人监听的端口。
 		// Close 在进程仍在运行时内部走 graceful stop，阻塞到端口释放，
@@ -254,19 +264,39 @@ func (s *CoreService) watchCoreExit(proc core.Core, done <-chan struct{}) {
 	s.SetToNeedRestart()
 }
 
-// drainTrafficLocked 在停掉 proc 之前把内核侧的计数器落库。
+// pickDrainTarget 在锁外挑出待收流量的进程，并顺带回答"这次重启能不能跳过"。
+//
+// 返回的 skip 只是一个省事的预判：真正作数的是 RestartCore 拿到锁之后
+// 再做的那一次。
+func (s *CoreService) pickDrainTarget(force bool, cfg core.Config) (proc core.Core, skip bool) {
+	state.mu.Lock()
+	defer state.mu.Unlock()
+	if state.proc == nil {
+		return nil, false
+	}
+	if !force && state.proc.IsRunning() && state.proc.GetConfig().Equals(cfg) {
+		return nil, true
+	}
+	return state.proc, false
+}
+
+// drainTraffic 在停掉 proc 之前把内核侧的计数器落库。
 //
 // sing-box 的计数器是 reset-on-read 的，且只活在进程内存里：进程一死，
 // 上一次 CoreTrafficJob 之后攒下的那批字节就永远消失了。流量任务 10 秒一轮，
 // 而增删一个入站、改一个客户端都会重启内核——用户每改一次配置就白嫖掉
 // 最多一整轮的配额，改得越勤漏得越多。
 //
-// 调用方必须持有 state.mu，所以这里直接用 proc.GetTraffic
-// 而不是会重新加锁的 GetCoreTraffic。
+// 必须在不持有 state.mu 的情况下调用：这里有一次 gRPC 往返（最长
+// statsQueryTimeout）外加一次写事务，而 /healthz、状态接口和 Prometheus
+// 抓取都要靠 IsCoreRunning 拿同一把锁。收流量收到一半把面板的可观测性
+// 一起锁住，代价比它救回来的那点字节大得多。
+//
+// 重复调用是安全的：计数器已经被上一次读清零了，第二次拿到的是零增量。
 //
 // 失败只记日志：停机流程不该因为库写不进去而卡住，而这批字节到这一步
 // 已经没有别的去处了。
-func (s *CoreService) drainTrafficLocked(proc core.Core) {
+func (s *CoreService) drainTraffic(proc core.Core) {
 	if proc == nil || !proc.IsRunning() {
 		return
 	}
@@ -290,9 +320,17 @@ func (s *CoreService) drainTrafficLocked(proc core.Core) {
 
 // StopCore 终止 sing-box 子进程。
 func (s *CoreService) StopCore() error {
+	logger.Debug("stop sing-box")
+
+	// 先把这一轮的流量收进库，再让进程走；收的时候不占 state.mu，
+	// 理由见 drainTraffic。
+	state.mu.Lock()
+	proc := state.proc
+	state.mu.Unlock()
+	s.drainTraffic(proc)
+
 	state.mu.Lock()
 	defer state.mu.Unlock()
-	logger.Debug("stop sing-box")
 	// 这是一次有意的停止，不该被 settleLastStart 当成"启动后崩溃"，
 	// 也不该被 watchCoreExit 当成需要自动拉起的意外退出。
 	state.startPending = false
@@ -300,8 +338,6 @@ func (s *CoreService) StopCore() error {
 	if state.proc == nil || !state.proc.IsRunning() {
 		return errors.New("sing-box is not running")
 	}
-	// 先把这一轮的流量收进库，再让进程走。
-	s.drainTrafficLocked(state.proc)
 	err := state.proc.Stop()
 	// 进程已经结束，下一次 GetCoreResult 要能拿到最终输出。
 	state.lastResult = state.proc.GetResult()
