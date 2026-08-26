@@ -8,6 +8,7 @@ import (
 	"strings"
 	"testing"
 
+	"x-ui/core"
 	"x-ui/core/singbox/spec"
 	"x-ui/database"
 	"x-ui/database/model"
@@ -142,6 +143,61 @@ func TestE2EInboundCRUD(t *testing.T) {
 	}
 	if inbounds := p.listInbounds(); len(inbounds) != 0 {
 		t.Fatalf("after delete the panel lists %d inbounds, want none", len(inbounds))
+	}
+}
+
+// TestE2EInboundUpdateKeepsLiveTraffic 钉住一条容易被"顺手写全字段"改回去的约定。
+//
+// 面板的入站表单里带着 up/down 两个数字，它们是页面加载那一刻的读数；与此同时
+// 流量任务每 10 秒就把内核的计数器累加进同样两列。历史实现让 update 直接采信
+// 表单里的值，于是"改个备注"或"拨一下启用开关"会把这中间跑过的字节抹平——
+// 而且抹掉多少完全取决于这个页面开了多久。
+//
+// 清零因此成了一个显式动作：POST xui/inbound/resetTraffic/:id。
+func TestE2EInboundUpdateKeepsLiveTraffic(t *testing.T) {
+	p := newPanel(t)
+	p.login()
+
+	if msg := p.decode(p.postForm("xui/inbound/add", inboundForm(20050, "vmess", vmessSettings))); !msg.Success {
+		t.Fatalf("add inbound: %s", msg.Msg)
+	}
+	created := p.listInbounds()[0]
+
+	// 模拟流量任务：页面加载之后，内核又报了一批字节上来。
+	inboundService := service.InboundService{}
+	if err := inboundService.AddTraffic([]*core.Traffic{
+		{IsInbound: true, Tag: created.Tag, Up: 4096, Down: 8192},
+	}); err != nil {
+		t.Fatalf("record inbound traffic: %v", err)
+	}
+
+	// 前端保存时不再回传 up/down，但即使有客户端仍然带着陈旧读数（比如脚本、
+	// 或者一个没更新的老页面），后端也不能采信。
+	stale := inboundForm(20050, "vmess", vmessSettings)
+	stale.Set("remark", "renamed")
+	stale.Set("up", "0")
+	stale.Set("down", "0")
+	if msg := p.decode(p.postForm("xui/inbound/update/"+strconv.Itoa(created.Id), stale)); !msg.Success {
+		t.Fatalf("update inbound: %s", msg.Msg)
+	}
+
+	updated := p.listInbounds()[0]
+	if updated.Up != 4096 || updated.Down != 8192 {
+		t.Errorf("traffic = %d/%d after a plain edit, want the live 4096/8192", updated.Up, updated.Down)
+	}
+	if updated.Remark != "renamed" {
+		t.Errorf("remark = %q, want the edit to have gone through", updated.Remark)
+	}
+
+	if msg := p.decode(p.postForm("xui/inbound/resetTraffic/"+strconv.Itoa(created.Id), nil)); !msg.Success {
+		t.Fatalf("reset inbound traffic: %s", msg.Msg)
+	}
+	reset := p.listInbounds()[0]
+	if reset.Up != 0 || reset.Down != 0 {
+		t.Errorf("traffic = %d/%d after an explicit reset, want 0/0", reset.Up, reset.Down)
+	}
+	if reset.Remark != "renamed" || reset.Port != 20050 {
+		t.Errorf("reset touched more than the counters: remark %q port %d", reset.Remark, reset.Port)
 	}
 }
 

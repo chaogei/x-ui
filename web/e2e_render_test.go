@@ -199,6 +199,39 @@ func TestE2EFrontendRendersTheCredentialWarning(t *testing.T) {
 	}
 }
 
+// TestE2EFrontendBootsWithoutUnsafeEval 是 CSP 里那条 script-src 的依据。
+//
+// 面板不再是 Vue 2 的在线模板编译器——Vue 3 的模板在构建期就编译成了渲染函数，
+// 运行时不需要 eval。产物里仍然搜得到两处 `Function("return this")`，但它们都是
+// globalThis 探测链的最后一档，浏览器里 self.Math === Math 早就短路掉了。
+//
+// 光靠读代码得出的结论会随着某次依赖升级悄悄失效，所以这里让 jsdom 把 eval 与
+// Function 构造器都封掉再跑一遍产物：真有谁在启动路径上用了它们，这条用例会红，
+// 而不是等用户在浏览器控制台里看见 EvalError。
+func TestE2EFrontendBootsWithoutUnsafeEval(t *testing.T) {
+	smoke := requireRenderSmoke(t)
+
+	p := newPanel(t)
+	p.login()
+
+	for _, page := range []string{"xui/", "xui/inbounds", "xui/setting"} {
+		t.Run(page, func(t *testing.T) {
+			body := readBody(t, p.get(page, [2]string{"Accept-Language", "en-US"}))
+			res := smoke.runWith(t, body, "XUI_BLOCK_EVAL=1")
+
+			for _, e := range res.Errors {
+				t.Errorf("with eval blocked, the bundle logged: %s", e)
+			}
+			if !res.Mounted {
+				t.Fatalf("#app is empty with eval blocked: the panel needs 'unsafe-eval' after all")
+			}
+			if res.Actionable == 0 {
+				t.Error("the page rendered but has nothing to click")
+			}
+		})
+	}
+}
+
 // renderSmoke 是 jsdom 渲染器的句柄。
 type renderSmoke struct {
 	node   string
@@ -244,10 +277,17 @@ func requireRenderSmoke(t *testing.T) *renderSmoke {
 // run 把一页 HTML 喂给 jsdom 渲染器并解析结果。
 func (r *renderSmoke) run(t *testing.T, page []byte) renderResult {
 	t.Helper()
+	return r.runWith(t, page)
+}
+
+// runWith 同上，另外给渲染器进程追加几个环境变量。
+func (r *renderSmoke) runWith(t *testing.T, page []byte, env ...string) renderResult {
+	t.Helper()
 
 	// 产物有 1.6 MB，jsdom 解析 + Vue 首轮渲染在慢机器上要几秒。
 	// 给足余量，但不要无限等：挂住比失败更难查。
 	cmd := exec.Command(r.node, r.script)
+	cmd.Env = append(os.Environ(), env...)
 	cmd.Stdin = bytes.NewReader(page)
 	var stdout, stderr bytes.Buffer
 	cmd.Stdout = &stdout

@@ -20,6 +20,12 @@ const bundle = fs.readFileSync(bundlePath, "utf8").replace(/\bexport default /g,
 
 const html = fs.readFileSync(0, "utf8");
 
+// XUI_BLOCK_EVAL=1 模拟一条不含 'unsafe-eval' 的 CSP：eval 与 Function 构造器
+// 一律抛错。产物里确实还留着两处 `Function("return this")`，但它们都是
+// globalThis 探测的最后一档兜底，浏览器里根本走不到——这个开关的作用就是把
+// "走不到"从人肉推断变成一条会红的用例。见 web/middleware/security.go。
+const blockEval = process.env.XUI_BLOCK_EVAL === "1";
+
 // jsdom 没实现的浏览器 API 会以异常形式冒出来，但那是 jsdom 的边界，不是产物的问题。
 // 这里按消息前缀白名单过滤，其余一律算失败。
 const jsdomGaps = [
@@ -64,8 +70,25 @@ dom.window.matchMedia = (query) => ({
   dispatchEvent: () => false,
 });
 
+// 产物本身要靠 eval 才能跑起来（它是 ESM，jsdom 的 runScripts 只吃经典脚本），
+// 所以先把入口留一份引用，再去封掉窗口上的那两个。
+const evalBundle = dom.window.eval;
+
+if (blockEval) {
+  const blocked = (what) => {
+    throw new EvalError(`${what} is blocked: this page's CSP carries no 'unsafe-eval'`);
+  };
+  // 用 Proxy 而不是直接替换：只拦调用与构造，Function.prototype、instanceof、
+  // .call/.apply 这些照常可用，否则塌的是 jsdom 而不是产物。
+  dom.window.Function = new Proxy(dom.window.Function, {
+    apply: () => blocked("Function()"),
+    construct: () => blocked("new Function()"),
+  });
+  dom.window.eval = () => blocked("eval()");
+}
+
 try {
-  dom.window.eval(bundle);
+  evalBundle.call(dom.window, bundle);
 } catch (e) {
   record("bundle threw while evaluating: " + (e.stack || e.message));
 }
