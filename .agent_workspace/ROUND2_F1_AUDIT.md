@@ -1,8 +1,25 @@
 # Round 2 — F1 re-audit of the MERGED tree (`cursor/sota-perf-audit-7b92`)
 
-Audited at merge head `09adb3a`. Verification: `CGO_ENABLED=0 go build ./...` and
-`go test ./...` PASS; `go test -race ./web/... ./core/... ./database/...` PASS
-(no race reports — expected, see H1: the harness never starts the cron).
+Audited at merge head `09adb3a`, re-verified after sibling commits `a64e830` +
+`7b47282` landed mid-audit. Verification: `CGO_ENABLED=0 go build ./...` and
+`go test ./...` PASS at both heads; `go test -race` PASS at `09adb3a`.
+
+**ATTENTION: the branch is now RED under `-race`.** Sibling commit `7b47282`
+added `panel.startCron()` and `TestE2EStatusPollingConcurrentWithCronRefresh`,
+which reproduces H1 deterministically:
+`go test -race -run TestE2EStatusPollingConcurrentWithCronRefresh ./web/` FAILS
+("race detected"; write = cron populating the fresh `Status` last at
+`web/service/server.go:199` then publishing via `web/controller/server.go:45`,
+read = HTTP handler marshaling `a.lastStatus` — a textbook unsynchronized
+publish). CI runs `go test -race ./...` (`.github/workflows/ci.yml:139-143`),
+so CI stays red until Round 3 fixes the controller. Fixing H1 is therefore no
+longer optional polish; it gates the branch.
+
+Also landed mid-audit and verified sound:
+- `a64e830` — regex-free `parseTrafficName` (`core/singbox/stats.go:28-65`):
+  closes the "aggregateTraffic regex allocs" perf item; handles `>>>`-in-tag,
+  empty tags, and preserves the old regex's no-newline semantics.
+- `7b47282` — closes the "harness cannot exercise cron" gap (`web/harness_test.go:203-218`).
 
 ## 1. Round 1 High/Med items — closed vs open in THIS branch
 
@@ -16,7 +33,7 @@ Audited at merge head `09adb3a`. Verification: `CGO_ENABLED=0 go build ./...` an
 | Med | gzip / visibility polling | poll **DONE** (`web/frontend/src/poll.ts`, correct: single in-flight tick, hidden-tab pause, exp backoff, resume-refresh); gzip **OPEN** — no compression middleware in `web/web.go:172-270`; 1.25 MiB `xui.js` served identity-encoded. |
 | Low | CSP comment says Vue 2 | **OPEN** | `web/middleware/security.go:10-11` (and `security_test.go:44`). Real issue behind it: `'unsafe-eval'` at `security.go:16` is no longer needed — the bundle is Vue 3 runtime-only, precompiled. |
 | Low | CSRF non-constant-time compare | **OPEN** | `web/middleware/csrf.go:46` plain `!=`. |
-| Low | harness never starts cron | **OPEN** | `web/harness_test.go:157-160` ("cron 只建不启动") — H1 is untestable under `-race` until a controller-level test drives the cron. `web/controller` still has zero test files. |
+| Low | harness never starts cron | **CLOSED** (by `7b47282`, mid-audit) | `web/harness_test.go:203-218` adds `startCron()`; the new stress test makes H1 fail under `-race`. Note `web/controller` itself still has zero test files. |
 
 Round 1 items verified as genuinely **CLOSED** in this branch: WAL+busy_timeout+pool
 (`database/db.go:172-191`), batched join-UPDATE (`web/service/traffic.go:104-160`,
@@ -51,10 +68,11 @@ under `-race`. Minor findings, none blocking:
 
 ## 3. Round 3 must-fix list (max 6)
 
-1. **ServerController synchronization + test** — one mutex over
+1. **ServerController synchronization (GATES CI)** — one mutex over
    `lastStatus/lastGetStatusTime/lastVersions/lastGetVersionsTime`
-   (`web/controller/server.go`); refresh-on-nil to fix N2; add a `web/controller` test
-   that actually starts the cron so `-race` covers the cron-vs-HTTP interleaving.
+   (`web/controller/server.go`); refresh-on-nil to fix N2. The regression test
+   already exists (`TestE2EStatusPollingConcurrentWithCronRefresh`) and fails
+   under `-race` until this lands.
 2. **Stop accepting `up`/`down` on inbound update + dedicated reset endpoint** —
    `UpdateInbound` switches to column-selective `Updates` omitting up/down
    (`web/service/inbound.go:147-148,162`); add `POST /xui/inbound/resetTraffic/:id`;
