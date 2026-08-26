@@ -144,8 +144,10 @@ func (s *InboundService) UpdateInbound(inbound *model.Inbound) error {
 	if err != nil {
 		return err
 	}
-	oldInbound.Up = inbound.Up
-	oldInbound.Down = inbound.Down
+	// Up/Down 有意不从表单取值。表单里的那两个数字是页面加载那一刻的快照，
+	// 而流量任务每 10 秒就把内核的计数器累加进这两列：拿快照回写，等于把
+	// 编辑对话框打开期间跑过的字节全部抹掉——改个备注、拨一下启用开关都会。
+	// 清零是另一件事，走 ResetInboundTraffic。
 	oldInbound.Total = inbound.Total
 	oldInbound.Remark = inbound.Remark
 	oldInbound.Enable = inbound.Enable
@@ -160,6 +162,16 @@ func (s *InboundService) UpdateInbound(inbound *model.Inbound) error {
 
 	db := database.GetDB()
 	return db.Save(oldInbound).Error
+}
+
+// ResetInboundTraffic 清零某条入站的累计流量。
+//
+// 只写 up/down 两列，不碰其余字段：这样它与正在跑的流量任务、以及同一时刻
+// 提交的入站编辑都不会互相覆盖。
+func (s *InboundService) ResetInboundTraffic(id int) error {
+	db := database.GetDB()
+	return db.Model(model.Inbound{}).Where("id = ?", id).
+		Updates(map[string]interface{}{"up": 0, "down": 0}).Error
 }
 
 // AddTraffic 把 inbound 维度的流量累加到对应入站行。

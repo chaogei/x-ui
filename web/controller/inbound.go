@@ -29,6 +29,7 @@ func (a *InboundController) initRouter(g *gin.RouterGroup) {
 	g.POST("/add", a.addInbound)
 	g.POST("/del/:id", a.delInbound)
 	g.POST("/update/:id", a.updateInbound)
+	g.POST("/resetTraffic/:id", a.resetTraffic)
 }
 
 func (a *InboundController) getInbounds(c *gin.Context) {
@@ -120,6 +121,28 @@ func (a *InboundController) updateInbound(c *gin.Context) {
 		service.Audit(c, service.EventInboundUpdate, "fail", map[string]interface{}{
 			"inbound_id": id,
 			"error":      err.Error(),
+		})
+	}
+}
+
+// resetTraffic 单独清零一条入站的累计流量。
+//
+// 独立于 update 存在，是因为 update 不再接受表单里的 up/down —— 清零必须是
+// 一个明确的动作，而不是"保存时顺手把两个字段写成 0"的副作用。
+func (a *InboundController) resetTraffic(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		jsonMsg(c, I18n(c, "op_update"), err)
+		return
+	}
+	err = a.inboundService.ResetInboundTraffic(id)
+	jsonMsg(c, I18n(c, "op_reset_traffic"), err)
+	if err == nil {
+		// 不置重启标志：内核配置只看 enable，与 up/down 无关。一条被超配额停用的
+		// 入站清零后仍然是停用的，得管理员自己拨回来 —— 为一次计数器清零重启
+		// sing-box，代价是把所有在线连接一并掐断。
+		service.Audit(c, service.EventInboundResetTraffic, "ok", map[string]interface{}{
+			"inbound_id": id,
 		})
 	}
 }
