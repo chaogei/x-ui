@@ -138,6 +138,39 @@ func TestCSRFRejectsWrongToken(t *testing.T) {
 	}
 }
 
+// TestCSRFRejectsNearMisses 覆盖"只差一个字符"的同长度 token。
+//
+// 校验用的是 subtle.ConstantTimeCompare，所以差异出现在第一位还是最后一位
+// 都必须同样被拒——这也是不用 != 的原因：短路比较会把"猜对了几位"
+// 变成一个可测量的时间差。
+func TestCSRFRejectsNearMisses(t *testing.T) {
+	engine := csrfEngine()
+	token, cookies := primeCSRF(t, engine)
+
+	flip := func(i int) string {
+		b := []byte(token)
+		if b[i] == 'a' {
+			b[i] = 'b'
+		} else {
+			b[i] = 'a'
+		}
+		return string(b)
+	}
+	for _, pos := range []int{0, 1, len(token) / 2, len(token) - 1} {
+		supplied := flip(pos)
+		if len(supplied) != len(token) {
+			t.Fatalf("the near miss changed the length; the case would prove nothing")
+		}
+		req := withCookies(httptest.NewRequest(http.MethodPost, "/xui/inbound/add", nil), cookies)
+		req.Header.Set(HeaderCSRFToken, supplied)
+		rec := httptest.NewRecorder()
+		engine.ServeHTTP(rec, req)
+		if rec.Code != http.StatusForbidden {
+			t.Errorf("a token differing only at index %d returned %d, want 403", pos, rec.Code)
+		}
+	}
+}
+
 // TestCSRFProtectsLogin 覆盖 CSRF-login：攻击者把受害者登进自己的账号，
 // 之后受害者的所有操作都发生在攻击者可见的账号里。
 func TestCSRFProtectsLogin(t *testing.T) {

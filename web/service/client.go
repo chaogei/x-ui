@@ -147,8 +147,10 @@ func (s *ClientService) UpdateClient(client *model.Client) error {
 	existing.Username = client.Username
 	existing.Extra = client.Extra
 
+	// up / down / last_seen 同样要 Omit：读出整行再写回去，等于把这中间
+	// 流量任务记下的字节抹掉。忽略请求里的值只挡住了伪造，挡不住这个时序。
 	db := database.GetDB()
-	if err := db.Save(existing).Error; err != nil {
+	if err := db.Omit("up", "down", "last_seen").Save(existing).Error; err != nil {
 		if isUniqueViolation(err) {
 			return fmt.Errorf("a client with email %q already exists", client.Email)
 		}

@@ -228,6 +228,9 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 			c.Header("Cache-Control", "max-age=31536000")
 		}
 	})
+	// 只压 assets/：那里的字节与请求无关，压缩率不会泄漏任何东西。
+	// 页面和 API 响应里既有 CSRF token 又有请求方能影响的内容，不压。
+	engine.Use(middleware.CompressStatic(assetsBasePath))
 	if err := s.initI18n(engine); err != nil {
 		return nil, err
 	}
@@ -305,16 +308,55 @@ func (s *Server) startTask() {
 	if err := s.coreService.RestartCore(true); err != nil {
 		logger.Warning("start sing-box failed:", err)
 	}
+	guarded := backgroundJobChain()
 	// 每 30 秒检查一次 sing-box 是否在运行
-	s.cron.AddJob("@every 30s", job.NewCheckCoreRunningJob())
+	s.cron.AddJob("@every 30s", guarded.Then(job.NewCheckCoreRunningJob()))
 	// 每 10 秒统计一次流量（内核未运行时直接跳过）
-	s.cron.AddJob("@every 10s", job.NewCoreTrafficJob())
+	s.cron.AddJob("@every 10s", guarded.Then(job.NewCoreTrafficJob()))
 	// 每 10 秒消费一次"需要重启内核"的标志，失败时按指数退避
-	s.cron.AddJob("@every 10s", job.NewCoreRestartJob())
+	s.cron.AddJob("@every 10s", guarded.Then(job.NewCoreRestartJob()))
 	// 每 30 秒检查一次 inbound 流量超出和到期的情况
-	s.cron.AddJob("@every 30s", job.NewCheckInboundJob())
+	s.cron.AddJob("@every 30s", guarded.Then(job.NewCheckInboundJob()))
 
 	s.startTgbotTask()
+}
+
+// backgroundJobChain 是所有周期任务共用的两层护栏。
+//
+//   - SkipIfStillRunning：上一轮没跑完就跳过这一轮。重启内核要几秒、
+//     Telegram 日报要出网、数据库被锁住时写入会一直等——任何一项超过自己的
+//     周期，cron 都会照样再起一个 goroutine，于是同一个任务的多份副本
+//     互相抢锁，越堆越多。跳过一轮永远比堆叠安全：这些任务全都是幂等的
+//     "把当前状态收敛一次"，不是必须逐条执行的队列。
+//   - Recover：一个后台任务里的 panic 现在只损失这一轮，而不是把整个面板
+//     带走。cron.New 默认不装这层。
+//
+// 顺序不能反过来。cron 的 SkipIfStillRunning 是这么写的：
+//
+//	case v := <-ch:
+//	    j.Run()
+//	    ch <- v   // 没有 defer
+//
+// 令牌的归还不在 defer 里，任务一 panic 就再也回不去，此后每一轮都被"跳过"
+// ——那个任务从此彻底停摆。把 Recover 放在里层，panic 到不了跳过逻辑。
+func backgroundJobChain() cron.Chain {
+	return cron.NewChain(
+		cron.SkipIfStillRunning(cronLogger{}),
+		cron.Recover(cronLogger{}),
+	)
+}
+
+// cronLogger 把 cron 内部的诊断信息接到面板日志上。
+//
+// "跳过一轮"是常态噪音，压到 Debug；panic 与调度错误按警告报。
+type cronLogger struct{}
+
+func (cronLogger) Info(msg string, keysAndValues ...interface{}) {
+	logger.Debug(append([]interface{}{"cron:", msg}, keysAndValues...)...)
+}
+
+func (cronLogger) Error(err error, msg string, keysAndValues ...interface{}) {
+	logger.Warning(append([]interface{}{"cron:", msg, err}, keysAndValues...)...)
 }
 
 // startTgbotTask 注册 Telegram 日报任务（仅在设置里开启时）。
@@ -333,7 +375,7 @@ func (s *Server) startTgbotTask() {
 		runtime = "@daily"
 	}
 	logger.Infof("Tg notify enabled, run at %s", runtime)
-	if _, err := s.cron.AddJob(runtime, job.NewStatsNotifyJob()); err != nil {
+	if _, err := s.cron.AddJob(runtime, backgroundJobChain().Then(job.NewStatsNotifyJob())); err != nil {
 		logger.Warning("add tg notify job failed:", err)
 	}
 }

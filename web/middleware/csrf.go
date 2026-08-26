@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"crypto/rand"
+	"crypto/subtle"
 	"encoding/hex"
 	"net/http"
 
@@ -42,8 +43,14 @@ func CSRF() gin.HandlerFunc {
 			c.Next()
 			return
 		}
+		// 恒定时间比较：短路比较会随着"前缀猜对了几个字符"泄漏时间差。
+		// 逐字节试探需要的请求量在一次会话里并不现实，但这个 token 是
+		// 写操作的唯一凭据，而 subtle.ConstantTimeCompare 的代价是零。
+		//
+		// 长度不同时 ConstantTimeCompare 直接返回 0（它自己就要比长度），
+		// 这里不额外补长度检查——空 token 已经被单独挡在前面。
 		supplied := c.GetHeader(HeaderCSRFToken)
-		if supplied == "" || supplied != token {
+		if supplied == "" || subtle.ConstantTimeCompare([]byte(supplied), []byte(token)) != 1 {
 			c.AbortWithStatusJSON(http.StatusForbidden, gin.H{
 				"success": false,
 				"msg":     "csrf token mismatch",

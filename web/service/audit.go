@@ -14,16 +14,17 @@ import (
 // 审计事件名（面板所有对安全/合规敏感的操作用同一套枚举常量，
 // 便于 journald / 日志采集端用 grep "AUDIT " 做精确过滤）。
 const (
-	EventLoginSuccess  = "login_success"
-	EventLoginFail     = "login_fail"
-	EventLoginLocked   = "login_locked"
-	EventLogout        = "logout"
-	EventUserUpdate    = "user_update"
-	EventInboundAdd    = "inbound_add"
-	EventInboundUpdate = "inbound_update"
-	EventInboundDelete = "inbound_delete"
-	EventSettingUpdate = "setting_update"
-	EventPanelRestart  = "panel_restart"
+	EventLoginSuccess        = "login_success"
+	EventLoginFail           = "login_fail"
+	EventLoginLocked         = "login_locked"
+	EventLogout              = "logout"
+	EventUserUpdate          = "user_update"
+	EventInboundAdd          = "inbound_add"
+	EventInboundUpdate       = "inbound_update"
+	EventInboundDelete       = "inbound_delete"
+	EventInboundResetTraffic = "inbound_reset_traffic"
+	EventSettingUpdate       = "setting_update"
+	EventPanelRestart        = "panel_restart"
 
 	EventClientAdd          = "client_add"
 	EventClientUpdate       = "client_update"
