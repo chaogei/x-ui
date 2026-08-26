@@ -88,12 +88,28 @@ func TestE2ELoginWithWrongCSRFIsRejected(t *testing.T) {
 	resp := p.postFormWithToken("login", url.Values{
 		"username": {p.username},
 		"password": {p.password},
-	}, token[:len(token)-2]+"ff")
+	}, tamper(token))
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusForbidden {
 		t.Fatalf("POST /login with a tampered CSRF token returned %d, want 403", resp.StatusCode)
 	}
+}
+
+// tamper 返回一个保证与输入不同的 token。
+//
+// 直接把结尾换成某个固定串是不行的：token 是 32 字节随机 hex，
+// 每 256 次就有一次本来就以那个串结尾，于是"被篡改的 token"其实是原件，
+// 用例随机地失败一次。
+func tamper(token string) string {
+	if token == "" {
+		return "0"
+	}
+	replacement := byte('0')
+	if token[len(token)-1] == replacement {
+		replacement = '1'
+	}
+	return token[:len(token)-1] + string(replacement)
 }
 
 // TestE2ELoginSuccessSetsHardenedCookie 覆盖会话 cookie 的属性。
