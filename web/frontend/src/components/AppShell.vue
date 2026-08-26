@@ -79,3 +79,14 @@ function handleClick(key: string): void {
     </a-layout>
   </a-layout>
 </template>
+
+<style scoped>
+/*
+  collapsed-width=0 时 antd 会在侧边栏右缘挂一个浮动把手，它绝对定位在内容区
+  上方 —— 侧边栏展开时这个把手就压在页面左上角，把设置页的第一个 tab 遮掉一半。
+  展开状态下侧边栏本身就在眼前，把手是多余的；只在收起时才需要它。
+*/
+:deep(.ant-layout-sider:not(.ant-layout-sider-collapsed) .ant-layout-sider-zero-width-trigger) {
+  display: none;
+}
+</style>

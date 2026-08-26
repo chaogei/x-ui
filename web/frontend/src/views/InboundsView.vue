@@ -163,7 +163,9 @@ const columns = computed(() => [
   { title: t('traffic_up_down'), key: 'traffic', width: 210, align: 'center' as const },
   { title: t('stream_settings'), key: 'stream', width: 140, align: 'center' as const },
   { title: t('expiry_time'), key: 'expiryTime', width: 170, align: 'center' as const },
-  { title: t('operation'), key: 'action', width: 260, align: 'center' as const },
+  // 操作列钉在右侧：所有列加起来比常见视口宽，表格会横向滚动，而这一列正是
+  // 用得最多的。不钉住的话它默认落在滚动区最右端，开箱就是看不见的状态。
+  { title: t('operation'), key: 'action', width: 280, align: 'center' as const, fixed: 'right' as const },
 ])
 
 onMounted(load)
