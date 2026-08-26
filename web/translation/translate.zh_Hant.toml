@@ -268,6 +268,7 @@
 "unit_hour" = "小時"
 "unit_day" = "天"
 "menu_toggle" = "展開 / 收合選單"
+"skip_to_content" = "跳至主要內容"
 "inbound_empty" = "還沒有入站"
 "inbound_empty_hint" = "新增第一個入站之後，流量、到期時間與用戶端都會顯示在這裡。"
 

@@ -37,6 +37,9 @@ const pageTitle = computed(() => {
 
 const LANG_PREFIX = 'lang:'
 
+/** 跳转链接的落点。id 写死即可：一个页面只有一个内容区。 */
+const CONTENT_ID = 'xui-content'
+
 function handleClick(key: string): void {
   if (key.startsWith(LANG_PREFIX)) {
     setLang(key.slice(LANG_PREFIX.length))
@@ -50,6 +53,12 @@ function handleClick(key: string): void {
 
 <template>
   <a-layout class="xui-shell">
+    <!--
+      Tab 进页面的第一站。侧边栏在它后面，所以只用键盘的人不必先穿过十来个
+      菜单项才能够到内容区里的控件。平时移出视口（见 style.css 的 .xui-skip）。
+    -->
+    <a class="xui-skip" :href="`#${CONTENT_ID}`">{{ t('skip_to_content') }}</a>
+
     <!--
       breakpoint="md" + collapsed-width="0"：窄屏自动收起。菜单只此一份，
       语言切换在手机上同样可达。展开/收起统一由顶栏那个按钮控制，antd 自带的
@@ -129,7 +138,8 @@ function handleClick(key: string): void {
         <span class="xui-topbar__version">x-ui {{ boot.version }}</span>
       </header>
 
-      <a-layout-content class="xui-content">
+      <!-- tabindex=-1 让锚点跳转真的把焦点也带过来，而不只是滚动。 -->
+      <a-layout-content :id="CONTENT_ID" class="xui-content" tabindex="-1">
         <slot />
       </a-layout-content>
     </a-layout>

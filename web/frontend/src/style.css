@@ -47,6 +47,9 @@
   /* 表格里钉住的操作列必须挡住从下面滚过去的内容。 */
   --xui-fixed-cell-bg: rgba(13, 18, 34, 0.94);
 
+  /* 键盘焦点环。与 theme.ts 的 colorPrimaryBorder 同一个亮度档。 */
+  --xui-focus: #8ea6ff;
+
   --xui-shadow: 0 18px 40px rgba(3, 6, 16, 0.45);
   --xui-shadow-lg: 0 28px 70px rgba(3, 6, 16, 0.55);
 
@@ -146,6 +149,66 @@ body::after {
 
 .xui-glass > * {
   position: relative;
+}
+
+/* ------------------------------------------------------------------ *
+ * 键盘焦点
+ * ------------------------------------------------------------------ */
+
+/*
+  antd 自己的组件由 theme.ts 的 colorPrimaryBorder 管焦点环，但页面上还有一批
+  不是 antd 的可聚焦元素：顶栏的折叠按钮、品牌链接、表格与卡片里的操作 <a>、
+  下面那条跳转链接。它们要么完全没有焦点样式，要么被 antd 的 `a:focus{outline:0}`
+  抹掉了 —— 只用键盘的人根本看不出光标停在哪一行的哪个操作上。
+
+  只挑 :focus-visible：鼠标点一下不该留下一圈环。
+  本文件是 <link>，排在 antd 运行时注入的 <style> 之后（后者用 prepend 插在
+  <head> 顶部），所以同权重时这里生效，不需要 !important。
+*/
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+summary:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--xui-focus);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/*
+  跳到主要内容。
+
+  侧边栏有十来个菜单项，每次用 Tab 进页面都要先走完它们才能碰到内容区里的
+  控件。这条链接平时移出视口，一拿到焦点就落到左上角。
+*/
+.xui-skip {
+  position: fixed;
+  top: 10px;
+  inset-inline-start: 10px;
+  z-index: 200;
+  padding: 9px 16px;
+  border-radius: 12px;
+  background: var(--xui-elevated-bg);
+  border: 1px solid var(--xui-glass-border);
+  box-shadow: var(--xui-shadow);
+  color: var(--xui-text);
+  font-size: 13px;
+  font-weight: 550;
+  text-decoration: none;
+  /* 用位移而不是 display:none —— 后者会把它从 Tab 顺序里一起摘掉。 */
+  transform: translateY(calc(-100% - 20px));
+}
+
+.xui-skip:focus-visible {
+  transform: none;
+}
+
+/* 跳转落点自身不该亮起焦点环：环是给键盘导航看的，这里只是滚动目标。 */
+.xui-content:focus,
+.xui-content:focus-visible {
+  outline: none;
 }
 
 /* ------------------------------------------------------------------ *

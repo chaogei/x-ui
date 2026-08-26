@@ -68,6 +68,12 @@ export const glassTheme: ThemeConfig = {
     colorWarning: '#fbbf24',
     colorError: '#fb7185',
     colorLink: '#8ea6ff',
+    /*
+      antd 的键盘焦点环用的是 colorPrimaryBorder（见 es/style 的 genFocusOutline）。
+      暗色算法从 #4361ee 推出来的那一档是很深的蓝，压在暗色玻璃面板上几乎看不出
+      焦点落在哪儿。这里直接钉成一个亮色，让所有 antd 组件的焦点环一次性可见。
+    */
+    colorPrimaryBorder: '#8ea6ff',
 
     colorText: TEXT,
     colorTextHeading: TEXT,
