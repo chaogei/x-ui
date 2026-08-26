@@ -13,6 +13,7 @@ import (
 const (
 	protocolSpecTS = "../../../web/frontend/src/models/protocols.ts"
 	coreModelTS    = "../../../web/frontend/src/models/core.ts"
+	formsTS        = "../../../web/frontend/src/models/forms.ts"
 )
 
 // readFrontendPatch 解析 protocols.ts 里 `_frontendPatch` 的顶层协议键
@@ -170,6 +171,123 @@ func TestFrontendPatchCoversEveryProtocol(t *testing.T) {
 	if len(patch) != len(backend) {
 		t.Errorf("frontend has %d protocols, backend has %d", len(patch), len(backend))
 	}
+}
+
+// TestFrontendFormsCoverEveryProtocol 盯的是第二处会漂移的前端协议表。
+//
+// _frontendPatch 决定"新建入站时模型长什么样"，protocolForms 决定"表单上能填
+// 哪些字段"。两者是分开写的，所以新增协议时很容易只补前者：对话框能打开、
+// 能保存，但表单区域空空如也，用户填不了 UUID 也填不了密码。
+// 这种缺陷不会抛异常，Vue 只是渲染了一个空数组。
+func TestFrontendFormsCoverEveryProtocol(t *testing.T) {
+	path := filepath.FromSlash(formsTS)
+	raw, err := os.ReadFile(path)
+	if err != nil {
+		t.Fatalf("read %s: %v", path, err)
+	}
+	src := stripJSComments(string(raw))
+
+	start := strings.Index(src, "protocolForms: Record<string, ProtocolForm> = {")
+	if start < 0 {
+		t.Fatalf("%s no longer declares protocolForms; update this test alongside the frontend", path)
+	}
+	entries := topLevelKeys(t, src[start+strings.Index(src[start:], "{")+1:])
+
+	backend := make(map[string]bool, len(order))
+	for _, s := range All() {
+		backend[s.Key] = true
+	}
+
+	var missing, extra []string
+	for key := range backend {
+		if _, ok := entries[key]; !ok {
+			missing = append(missing, key)
+		}
+	}
+	for key := range entries {
+		if !backend[key] {
+			extra = append(extra, key)
+		}
+	}
+	sort.Strings(missing)
+	sort.Strings(extra)
+
+	if len(missing) > 0 {
+		t.Errorf("protocols registered in Go but absent from protocolForms: %v — "+
+			"their inbound dialog would render an empty form", missing)
+	}
+	if len(extra) > 0 {
+		t.Errorf("protocolForms entries with no Go registration: %v — dead frontend code", extra)
+	}
+
+	// 有用户维度的协议，表单里必须能编辑那个凭证字段——否则用户建出来的
+	// 入站带着一个自己看不见、也改不了的凭证。
+	for _, s := range All() {
+		if s.Users.Identifier == "" {
+			continue
+		}
+		if body := entries[s.Key]; body != "" && !strings.Contains(body, s.Users.Identifier) {
+			t.Errorf("protocolForms[%q] has no field for the %q credential declared by UserSchema",
+				s.Key, s.Users.Identifier)
+		}
+	}
+}
+
+// topLevelKeys 从一个 JS 对象字面量的内部（不含最外层大括号）切出
+// `key: { ... }` 形式的顶层条目，返回 key → 条目内容。
+func topLevelKeys(t *testing.T, body string) map[string]string {
+	t.Helper()
+
+	entries := make(map[string]string)
+	var (
+		depth        int
+		inString     rune
+		entryKey     string
+		entryStart   int
+		keyCandidate strings.Builder
+	)
+	for i, r := range body {
+		if inString != 0 {
+			if r == inString && (i == 0 || body[i-1] != '\\') {
+				inString = 0
+			}
+			continue
+		}
+		switch r {
+		case '\'', '"', '`':
+			inString = r
+			continue
+		case '{', '[':
+			if depth == 0 && r == '{' {
+				entryKey = strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(keyCandidate.String()), ":"))
+				entryStart = i + 1
+			}
+			depth++
+			keyCandidate.Reset()
+			continue
+		case '}', ']':
+			depth--
+			if depth < 0 {
+				return entries
+			}
+			if depth == 0 && entryKey != "" {
+				entries[entryKey] = body[entryStart:i]
+				entryKey = ""
+			}
+			keyCandidate.Reset()
+			continue
+		case ',':
+			if depth == 0 {
+				keyCandidate.Reset()
+				continue
+			}
+		}
+		if depth == 0 {
+			keyCandidate.WriteRune(r)
+		}
+	}
+	t.Fatal("object literal is not brace-balanced")
+	return nil
 }
 
 // TestFrontendDefaultsMatchUserSchema 检查每种协议的 defaults() 里确实建出了
