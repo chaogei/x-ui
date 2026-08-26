@@ -5,6 +5,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"strings"
 
 	"x-ui/config"
 	"x-ui/database/model"
@@ -154,6 +155,9 @@ func initTwoFactor() error {
 }
 
 func InitDB(dbPath string) error {
+	if strings.TrimSpace(dbPath) == "" {
+		return fmt.Errorf("database path is required")
+	}
 	dir := path.Dir(dbPath)
 	if err := os.MkdirAll(dir, dbDirPerm); err != nil {
 		return err
