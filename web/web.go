@@ -48,6 +48,10 @@ var startTime = time.Now()
 // shutdownTimeout 是 HTTP 服务优雅停机的等待上限。
 const shutdownTimeout = 10 * time.Second
 
+// cronDrainTimeout 是等待在途后台任务收尾的上限。
+// 取值小于 shutdownTimeout：这些任务只写几行数据库，卡住说明库已经出问题了。
+const cronDrainTimeout = 5 * time.Second
+
 type wrapAssetsFS struct {
 	embed.FS
 }
@@ -291,38 +295,46 @@ func (s *Server) initI18n(engine *gin.Engine) error {
 	return nil
 }
 
+// startTask 注册面板的全部后台任务。
+//
+// 所有周期任务都挂在同一个 cron 上，Stop 时统一排空。历史实现把流量任务的
+// 注册塞进一个 `time.Sleep(5s)` 的裸 goroutine 里，为的是"错开内核启动时间"：
+// 但 CoreTrafficJob 本来就会在内核没跑起来时直接返回，而那个 goroutine 没人
+// 管——面板若在这 5 秒内停机，它会往一个已经 Stop 的 cron 上加任务。
 func (s *Server) startTask() {
 	if err := s.coreService.RestartCore(true); err != nil {
 		logger.Warning("start sing-box failed:", err)
 	}
 	// 每 30 秒检查一次 sing-box 是否在运行
 	s.cron.AddJob("@every 30s", job.NewCheckCoreRunningJob())
-
-	go func() {
-		time.Sleep(time.Second * 5)
-		// 每 10 秒统计一次流量，首次启动延迟 5 秒，与内核启动时间错开
-		s.cron.AddJob("@every 10s", job.NewCoreTrafficJob())
-	}()
-
+	// 每 10 秒统计一次流量（内核未运行时直接跳过）
+	s.cron.AddJob("@every 10s", job.NewCoreTrafficJob())
+	// 每 10 秒消费一次"需要重启内核"的标志，失败时按指数退避
+	s.cron.AddJob("@every 10s", job.NewCoreRestartJob())
 	// 每 30 秒检查一次 inbound 流量超出和到期的情况
 	s.cron.AddJob("@every 30s", job.NewCheckInboundJob())
-	// 每一天提示一次流量情况,上海时间8点30
-	var entry cron.EntryID
-	isTgbotenabled, err := s.settingService.GetTgbotenabled()
-	if (err == nil) && (isTgbotenabled) {
-		runtime, err := s.settingService.GetTgbotRuntime()
-		if err != nil || runtime == "" {
-			logger.Errorf("Add NewStatsNotifyJob error[%s],Runtime[%s] invalid,wil run default", err, runtime)
-			runtime = "@daily"
-		}
-		logger.Infof("Tg notify enabled,run at %s", runtime)
-		entry, err = s.cron.AddJob(runtime, job.NewStatsNotifyJob())
-		if err != nil {
-			logger.Warning("Add NewStatsNotifyJob error", err)
-			return
-		}
-	} else {
-		s.cron.Remove(entry)
+
+	s.startTgbotTask()
+}
+
+// startTgbotTask 注册 Telegram 日报任务（仅在设置里开启时）。
+func (s *Server) startTgbotTask() {
+	enabled, err := s.settingService.GetTgbotenabled()
+	if err != nil {
+		logger.Warning("read tgBotEnable failed:", err)
+		return
+	}
+	if !enabled {
+		return
+	}
+	runtime, err := s.settingService.GetTgbotRuntime()
+	if err != nil || runtime == "" {
+		logger.Errorf("invalid tg bot runtime %q (%v), falling back to @daily", runtime, err)
+		runtime = "@daily"
+	}
+	logger.Infof("Tg notify enabled, run at %s", runtime)
+	if _, err := s.cron.AddJob(runtime, job.NewStatsNotifyJob()); err != nil {
+		logger.Warning("add tg notify job failed:", err)
 	}
 }
 
@@ -410,10 +422,20 @@ func (s *Server) Start() (err error) {
 // 等价于立即强制关闭，正在处理的请求会被直接掐断，"优雅"二字名存实亡。
 // 现在改为：排空请求（最多 shutdownTimeout）之后才 cancel 服务级 context。
 func (s *Server) Stop() error {
-	_ = s.coreService.StopCore()
+	// 定时任务必须先停干净再停内核。反过来的话，一个恰好在跑的重启任务
+	// 会在 StopCore 之后把 sing-box 又拉起来，留下一个没人管的子进程。
+	//
+	// cron.Stop 只保证不再触发新任务，正在跑的还在跑；它返回的 context
+	// 在这些任务全部结束时关闭。
 	if s.cron != nil {
-		s.cron.Stop()
+		stopped := s.cron.Stop()
+		select {
+		case <-stopped.Done():
+		case <-time.After(cronDrainTimeout):
+			logger.Warning("background jobs did not finish within", cronDrainTimeout)
+		}
 	}
+	_ = s.coreService.StopCore()
 
 	var err1 error
 	var err2 error

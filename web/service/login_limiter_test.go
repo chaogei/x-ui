@@ -114,6 +114,110 @@ func TestLoginLimiterUnlocksAfterLockDuration(t *testing.T) {
 	}
 }
 
+// TestLoginLimiterBoundsItsRecordTable 是内存耗尽面的护栏。
+//
+// 记录是按来源 IP 建的，而来源 IP 由对面决定：一个手握 /64 IPv6 的攻击者
+// 每个地址试一次错密码，就能让这张表无限长大。历史实现只在"恰好查到那个
+// IP 且它已过期"时才删记录，也就是说攻击者的地址永远不会被回收。
+func TestLoginLimiterBoundsItsRecordTable(t *testing.T) {
+	l := &LoginLimiter{
+		records:        map[string]*loginFailRecord{},
+		WindowDuration: time.Hour,
+		MaxFailures:    5,
+		LockDuration:   time.Hour,
+		MaxRecords:     64,
+	}
+
+	for i := 0; i < 5000; i++ {
+		l.RecordFail(fmt.Sprintf("2001:db8::%x", i))
+	}
+
+	if got := l.Size(); got > l.MaxRecords {
+		t.Errorf("the table grew to %d records, want at most %d", got, l.MaxRecords)
+	}
+	if l.Size() == 0 {
+		t.Error("the table was emptied entirely; the limiter would stop working")
+	}
+}
+
+// TestLoginLimiterEvictionKeepsLockedIPs 保证淘汰不会变成"洗掉自己的锁"的手段。
+func TestLoginLimiterEvictionKeepsLockedIPs(t *testing.T) {
+	l := &LoginLimiter{
+		records:        map[string]*loginFailRecord{},
+		WindowDuration: time.Minute,
+		MaxFailures:    2,
+		LockDuration:   time.Hour, // 锁比窗口长得多，失效时刻最晚
+		MaxRecords:     32,
+	}
+
+	const attacker = "203.0.113.99"
+	l.RecordFail(attacker)
+	l.RecordFail(attacker)
+	if locked, _ := l.IsLocked(attacker); !locked {
+		t.Fatal("the IP should be locked after reaching MaxFailures")
+	}
+
+	// 用一大批一次性 IP 把表撑爆。
+	for i := 0; i < 2000; i++ {
+		l.RecordFail(fmt.Sprintf("198.51.100.%d:%d", i%256, i))
+	}
+
+	if locked, _ := l.IsLocked(attacker); !locked {
+		t.Error("flooding the limiter with fresh IPs washed away an existing lock")
+	}
+}
+
+// TestLoginLimiterExpiredRecordsAreReclaimed 覆盖惰性回收：
+// 表满时先扫掉失效记录，够用就不必淘汰任何活跃条目。
+func TestLoginLimiterExpiredRecordsAreReclaimed(t *testing.T) {
+	l := &LoginLimiter{
+		records:        map[string]*loginFailRecord{},
+		WindowDuration: 20 * time.Millisecond,
+		MaxFailures:    5,
+		LockDuration:   20 * time.Millisecond,
+		MaxRecords:     16,
+	}
+	for i := 0; i < l.MaxRecords; i++ {
+		l.RecordFail(fmt.Sprintf("192.0.2.%d", i))
+	}
+	if got := l.Size(); got != l.MaxRecords {
+		t.Fatalf("seeded %d records, want %d", got, l.MaxRecords)
+	}
+
+	time.Sleep(40 * time.Millisecond)
+	l.RecordFail("192.0.2.200")
+
+	// 全部过期，所以扫描之后应该只剩刚刚那一条。
+	if got := l.Size(); got != 1 {
+		t.Errorf("%d records survived the sweep, want only the fresh one", got)
+	}
+}
+
+// TestLoginLimiterStartsAFreshWindowAfterTheLockExpires 固化解锁语义。
+//
+// 锁一到期，之前那些失败就不该再算数了。否则在 LockDuration 短于
+// WindowDuration 的配置下，解锁后的第一次手滑会立刻把人又锁回去。
+func TestLoginLimiterStartsAFreshWindowAfterTheLockExpires(t *testing.T) {
+	l := &LoginLimiter{
+		records:        map[string]*loginFailRecord{},
+		WindowDuration: time.Minute,
+		MaxFailures:    2,
+		LockDuration:   20 * time.Millisecond,
+	}
+	const ip = "192.0.2.77"
+	l.RecordFail(ip)
+	l.RecordFail(ip)
+	time.Sleep(40 * time.Millisecond)
+
+	locked, remaining := l.RecordFail(ip)
+	if locked {
+		t.Fatal("the first failure after the lock expired locked the IP again")
+	}
+	if remaining != 1 {
+		t.Errorf("remaining = %d, want a fresh budget of %d", remaining, l.MaxFailures-1)
+	}
+}
+
 // TestLoginLimiterConcurrent 在 -race 下验证内部 map 的互斥。
 func TestLoginLimiterConcurrent(t *testing.T) {
 	l := NewLoginLimiter()

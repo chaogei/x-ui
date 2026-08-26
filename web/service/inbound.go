@@ -162,32 +162,27 @@ func (s *InboundService) UpdateInbound(inbound *model.Inbound) error {
 	return db.Save(oldInbound).Error
 }
 
-func (s *InboundService) AddTraffic(traffics []*core.Traffic) (err error) {
-	if len(traffics) == 0 {
+// AddTraffic 把 inbound 维度的流量累加到对应入站行。
+//
+// 与 ClientService.AddTraffic 消费的是同一批计数器，但两者取的是不同维度：
+// 这里累加 inbound>>><tag>>>>traffic>>><dir>，那边累加
+// user>>><email>>>>traffic>>><dir>。同一批字节在两张表各记一次是有意的
+// （入站看总量、客户端看配额），不是重复计账。
+//
+// 整批走一个事务并合成尽量少的语句：计数器是 reset-on-read 的，
+// 内核那边已经清零，这里要么整批落库，要么整批回滚由调用方重投，
+// 绝不能出现"前一半写进去了，后一半丢了"。
+func (s *InboundService) AddTraffic(traffics []*core.Traffic) error {
+	deltas := foldTraffic(traffics, isInboundTraffic)
+	if len(deltas) == 0 {
 		return nil
 	}
-	db := database.GetDB()
-	db = db.Model(model.Inbound{})
-	tx := db.Begin()
-	defer func() {
-		if err != nil {
-			tx.Rollback()
-		} else {
-			tx.Commit()
-		}
-	}()
-	for _, traffic := range traffics {
-		if traffic.IsInbound {
-			err = tx.Where("tag = ?", traffic.Tag).
-				UpdateColumn("up", gorm.Expr("up + ?", traffic.Up)).
-				UpdateColumn("down", gorm.Expr("down + ?", traffic.Down)).
-				Error
-			if err != nil {
-				return
-			}
-		}
-	}
-	return
+	// db.Transaction 会把 Commit 的错误一并返回。
+	// 历史实现用 tx.Begin() + defer tx.Commit()，提交失败（磁盘满、锁超时）
+	// 时 AddTraffic 照样返回 nil，那一批字节就这么无声无息地没了。
+	return database.GetDB().Transaction(func(tx *gorm.DB) error {
+		return applyTrafficDeltas(tx, model.Inbound{}, "tag", deltas, nil)
+	})
 }
 
 func (s *InboundService) DisableInvalidInbounds() (int64, error) {

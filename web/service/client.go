@@ -233,28 +233,15 @@ func (s *ClientService) ActiveClientsByInbound(now int64) (map[int][]*model.Clie
 //
 // 匹配不到 email 的计数器会被忽略：那通常是刚被删掉的用户留下的最后一批字节。
 func (s *ClientService) AddTraffic(traffics []*core.Traffic) error {
-	if len(traffics) == 0 {
+	deltas := foldTraffic(traffics, isUserTraffic)
+	if len(deltas) == 0 {
 		return nil
 	}
-	db := database.GetDB()
 	now := time.Now().UnixMilli()
-	return db.Transaction(func(tx *gorm.DB) error {
-		for _, t := range traffics {
-			if !t.IsUser || (t.Up == 0 && t.Down == 0) {
-				continue
-			}
-			err := tx.Model(model.Client{}).
-				Where("email = ?", t.Tag).
-				Updates(map[string]interface{}{
-					"up":        gorm.Expr("up + ?", t.Up),
-					"down":      gorm.Expr("down + ?", t.Down),
-					"last_seen": now,
-				}).Error
-			if err != nil {
-				return err
-			}
-		}
-		return nil
+	// 整批一个事务：计数器已经在内核侧清零，半批落库等于凭空丢字节。
+	return database.GetDB().Transaction(func(tx *gorm.DB) error {
+		return applyTrafficDeltas(tx, model.Client{}, "email", deltas,
+			map[string]interface{}{"last_seen": now})
 	})
 }
 

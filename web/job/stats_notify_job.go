@@ -71,15 +71,13 @@ func (j *StatsNotifyJob) SendMsgToTgbot(msg string) {
 	}
 }
 
-// SendMsgToTgbotAsync 在独立 goroutine 里投递通知。
+// SendMsgToTgbotAsync 把通知交给有界队列，由固定的工作 goroutine 投递。
 //
-// 登录请求的 HTTP 路径绝不能因为 Telegram 不可达而阻塞：
-// 即便 bot.Send 卡到超时（客户端已设 10s Timeout），用户看到的登录响应也不受影响。
+// 登录请求的 HTTP 路径绝不能因为 Telegram 不可达而阻塞：即便 bot.Send
+// 卡到超时（客户端已设 10s Timeout），用户看到的登录响应也不受影响。
+// 队列满时这条通知会被丢弃，见 notifyQueue 的说明。
 func (j *StatsNotifyJob) SendMsgToTgbotAsync(msg string) {
-	go func() {
-		defer common.Recover("tgbot notify")
-		j.SendMsgToTgbot(msg)
-	}()
+	notifier.submit(func() { j.SendMsgToTgbot(msg) })
 }
 
 // Here run is a interface method of Job interface
