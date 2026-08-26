@@ -2,6 +2,7 @@ package database
 
 import (
 	"bytes"
+	"io"
 	"net/url"
 	"os"
 	"path/filepath"
@@ -206,6 +207,7 @@ func TestSchemaIsCreated(t *testing.T) {
 	}
 }
 
+<<<<<<< HEAD
 // TestConnectionPragmas 锁住连接级 pragma。
 //
 // 这些不是调优旋钮而是正确性前提：没有 WAL，每 10 秒一次的流量写事务
@@ -274,5 +276,36 @@ func TestSQLiteDSNIsParseable(t *testing.T) {
 	pragmas := u.Query()["_pragma"]
 	if len(pragmas) < 4 {
 		t.Errorf("dsn carries %d pragmas, want the full set: %v", len(pragmas), pragmas)
+	}
+}
+
+// An absent path is a startup configuration error. It must not silently select
+// SQLite's special empty DSN or create a database in the process directory.
+func TestInitDBRejectsMissingPath(t *testing.T) {
+	oldDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("get working directory: %v", err)
+	}
+	if err := os.Chdir(t.TempDir()); err != nil {
+		t.Fatalf("enter temporary directory: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(oldDir); err != nil {
+			t.Errorf("restore working directory: %v", err)
+		}
+	})
+	old := SetCredentialsOutput(io.Discard)
+	t.Cleanup(func() { SetCredentialsOutput(old) })
+	t.Cleanup(func() { _ = CloseDB() })
+
+	if err := InitDB(""); err == nil {
+		t.Fatal("InitDB accepted an empty database path")
+	}
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		t.Fatalf("read working directory: %v", err)
+	}
+	if len(entries) != 0 {
+		t.Errorf("an empty database path created files: %v", entries)
 	}
 }
