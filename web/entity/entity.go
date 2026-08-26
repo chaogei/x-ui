@@ -33,6 +33,8 @@ type AllSetting struct {
 	WebKeyFile         string `json:"webKeyFile" form:"webKeyFile"`
 	WebBasePath        string `json:"webBasePath" form:"webBasePath"`
 	WebTrustedProxies  string `json:"webTrustedProxies" form:"webTrustedProxies"`
+	SubAddress         string `json:"subAddress" form:"subAddress"`
+	MetricsToken       string `json:"metricsToken" form:"metricsToken"`
 	TgBotEnable        bool   `json:"tgBotEnable" form:"tgBotEnable"`
 	TgBotToken         string `json:"tgBotToken" form:"tgBotToken"`
 	TgBotChatId        int    `json:"tgBotChatId" form:"tgBotChatId"`

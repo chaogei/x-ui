@@ -3,6 +3,7 @@ package service
 import (
 	"encoding/json"
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 	"time"
@@ -25,7 +26,9 @@ func seedInbound(t *testing.T, protocol model.Protocol, port int, settings strin
 		Port:     port,
 		Protocol: protocol,
 		Settings: settings,
-		Tag:      "inbound-" + string(protocol),
+		// tag 带上端口：inbounds.tag 是唯一索引，同一个用例里多次
+		// seed 同一种协议会撞车。
+		Tag: "inbound-" + string(protocol) + "-" + strconv.Itoa(port),
 	}
 	if err := (&InboundService{}).AddInbound(inbound); err != nil {
 		t.Fatalf("seed inbound: %v", err)

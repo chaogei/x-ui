@@ -90,9 +90,10 @@ type Server struct {
 	httpServer *http.Server
 	listener   net.Listener
 
-	index  *controller.IndexController
-	server *controller.ServerController
-	xui    *controller.XUIController
+	index        *controller.IndexController
+	server       *controller.ServerController
+	xui          *controller.XUIController
+	subscription *controller.SubscriptionController
 
 	coreService    service.CoreService
 	settingService service.SettingService
@@ -256,6 +257,9 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 	s.index = controller.NewIndexController(g, s.loginLimiter)
 	s.server = controller.NewServerController(g)
 	s.xui = controller.NewXUIController(g)
+	// 订阅接口挂在 basePath 组上而不是 /xui：它靠 URL 里的 token 鉴权，
+	// 客户端不会带 session cookie。
+	s.subscription = controller.NewSubscriptionController(g)
 
 	return engine, nil
 }

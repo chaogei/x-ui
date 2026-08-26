@@ -41,6 +41,8 @@ var defaultValueMap = map[string]string{
 	"webKeyFile":         "",
 	"webBasePath":        "/",
 	"webTrustedProxies":  "",
+	"subAddress":         "",
+	"metricsToken":       "",
 	"timeLocation":       "Asia/Shanghai",
 	"tgBotEnable":        "false",
 	"tgBotToken":         "",
@@ -313,6 +315,20 @@ func ParseTrustedProxies(raw string) []string {
 		}
 	}
 	return out
+}
+
+// GetSubAddress 返回写进订阅链接的服务器地址覆盖值。
+//
+// 为空表示"用请求的 Host"。反向代理或多域名部署下必须显式配置，
+// 否则订阅里会出现面板的内网主机名。
+func (s *SettingService) GetSubAddress() (string, error) {
+	return s.getString("subAddress")
+}
+
+// GetMetricsToken 返回 /metrics 的 bearer token。
+// 为空表示该端点改为要求面板会话（见 web.registerMetricsRoute）。
+func (s *SettingService) GetMetricsToken() (string, error) {
+	return s.getString("metricsToken")
 }
 
 func (s *SettingService) GetBasePath() (string, error) {
