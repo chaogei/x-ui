@@ -152,6 +152,43 @@ while true; do sleep 0.2; done
 	}
 }
 
+// TestDoneFiresTheMomentTheCoreExits 固定 core.Core.Done 的契约。
+//
+// 面板靠这个通道把"内核崩了"的发现延迟从两轮探活（30s × 2）压到零；
+// 通道要是提前关闭，就等于每次启动都被当成一次崩溃。
+func TestDoneFiresTheMomentTheCoreExits(t *testing.T) {
+	fakeCore(t, `#!/bin/sh
+if [ "$1" = "version" ]; then echo "sing-box version 9.9.9 linux/amd64"; exit 0; fi
+while true; do sleep 0.2; done
+`)
+
+	p := NewProcess(&Config{})
+	select {
+	case <-p.Done():
+	default:
+		t.Fatal("a process that was never started must already report itself as done")
+	}
+
+	if err := p.Start(); err != nil {
+		t.Fatalf("start the fake core: %v", err)
+	}
+	done := p.Done()
+	select {
+	case <-done:
+		t.Fatal("Done fired while the core was still running")
+	default:
+	}
+
+	if err := p.Stop(); err != nil {
+		t.Fatalf("stop: %v", err)
+	}
+	select {
+	case <-done:
+	case <-time.After(5 * time.Second):
+		t.Fatal("Done never fired after the core exited")
+	}
+}
+
 // TestPumpLogsSurvivesAPanickingSink 固定住 recover 的位置。
 //
 // 原先是 `defer func(){ common.Recover("") }()`：recover 隔了一层调用，

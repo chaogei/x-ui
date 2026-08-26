@@ -77,6 +77,38 @@ func (j *CoreTrafficJob) Run() {
 	}
 }
 
+// Flush 把重投缓冲里的增量最后写一次库，供面板停机时调用。
+//
+// 缓冲是跨轮次的：写库失败的增量留在内存里等下一轮重投。停机时不再有
+// 下一轮，不冲一次就等于把这些字节丢掉——而它们之所以还在缓冲里，
+// 恰恰是因为之前遇到过一次写失败，谁也说不准那次故障有多大。
+//
+// 复用 running 标志：cron 排空超时的情况下常规轮次可能仍在飞，
+// 此时两边同时写同一批增量会重复计费，宁可放弃这次冲刷。
+func (j *CoreTrafficJob) Flush() {
+	if !j.running.CompareAndSwap(false, true) {
+		logger.Warning("core traffic job is still in flight, leaving its retry buffer unflushed")
+		return
+	}
+	defer j.running.Store(false)
+
+	if len(j.pendingInbound) == 0 && len(j.pendingUser) == 0 {
+		return
+	}
+	logger.Infof("flushing %d inbound and %d client traffic counters held for retry",
+		len(j.pendingInbound), len(j.pendingUser))
+
+	if err := j.inboundService.AddTraffic(j.pendingInbound); err != nil {
+		logger.Error("final flush of buffered inbound traffic failed, those bytes are lost:", err)
+	}
+	j.pendingInbound = nil
+
+	if err := j.clientService.AddTraffic(j.pendingUser); err != nil {
+		logger.Error("final flush of buffered client traffic failed, those bytes are lost:", err)
+	}
+	j.pendingUser = nil
+}
+
 // carryOver 把上一轮没写成功的增量与本轮拉到的计数器合并成一批。
 //
 // 只保留 keep 命中的维度，并丢掉零增量：内核在 reset 模式下依然会返回

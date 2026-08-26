@@ -89,6 +89,27 @@ func (p *Process) IsRunning() bool {
 	return p.isRunningLocked()
 }
 
+// closedChan 代表"没有进程可等"。Done 在实例还没 Start 过时返回它，
+// 调用方就不必区分"从未启动"和"已经退出"两种状态。
+var closedChan = func() chan struct{} {
+	ch := make(chan struct{})
+	close(ch)
+	return ch
+}()
+
+// Done 返回一个在子进程退出时关闭的通道，见 core.Core.Done。
+//
+// 返回的是 Start 那一刻建立的 waitDone 快照：后续再 Start 会换一个新通道，
+// 但拿着旧通道的等待方关心的本来就是它当时看到的那个进程。
+func (p *Process) Done() <-chan struct{} {
+	p.mu.RLock()
+	defer p.mu.RUnlock()
+	if p.waitDone == nil {
+		return closedChan
+	}
+	return p.waitDone
+}
+
 func (p *Process) isRunningLocked() bool {
 	if p.cmd == nil || p.cmd.Process == nil {
 		return false

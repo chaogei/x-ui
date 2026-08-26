@@ -5,6 +5,8 @@ import (
 	"testing"
 
 	"x-ui/core"
+	"x-ui/database/model"
+	"x-ui/testutil"
 )
 
 func index(t *testing.T, list []*core.Traffic) map[string]core.Traffic {
@@ -108,5 +110,72 @@ func TestBoundPendingKeepsTheHeaviestCounters(t *testing.T) {
 	short := []*core.Traffic{{IsUser: true, Tag: "a", Up: 1}}
 	if len(boundPending(short, "client")) != 1 {
 		t.Error("a buffer below the cap must be kept verbatim")
+	}
+}
+
+// TestFlushWritesTheRetryBufferOnShutdown 覆盖停机这条出口。
+//
+// 缓冲里的增量之所以还在内存里，是因为之前有一轮写库失败了；面板一停就
+// 再没有下一轮去重投它们。不冲这一次，用户白嫖的就不止一个周期。
+func TestFlushWritesTheRetryBufferOnShutdown(t *testing.T) {
+	db, _ := testutil.InitDB(t)
+	if err := db.Create(&model.Inbound{
+		Tag: "inbound-443", Protocol: model.VMess, Port: 443,
+		Enable: true, Settings: "{}", Up: 1, Down: 2,
+	}).Error; err != nil {
+		t.Fatalf("seed inbound: %v", err)
+	}
+	if err := db.Create(&model.Client{
+		InboundId: 1, Email: "alice@example.com", Enable: true,
+		SubToken: "token-alice", Up: 5, Down: 6,
+	}).Error; err != nil {
+		t.Fatalf("seed client: %v", err)
+	}
+
+	j := NewCoreTrafficJob()
+	j.pendingInbound = []*core.Traffic{{IsInbound: true, Tag: "inbound-443", Up: 100, Down: 200}}
+	j.pendingUser = []*core.Traffic{{IsUser: true, Tag: "alice@example.com", Up: 30, Down: 40}}
+
+	j.Flush()
+
+	var inbound model.Inbound
+	if err := db.Where("tag = ?", "inbound-443").First(&inbound).Error; err != nil {
+		t.Fatalf("read inbound back: %v", err)
+	}
+	if inbound.Up != 101 || inbound.Down != 202 {
+		t.Errorf("inbound = %d/%d, want the buffered bytes folded in (101/202)", inbound.Up, inbound.Down)
+	}
+
+	var client model.Client
+	if err := db.Where("email = ?", "alice@example.com").First(&client).Error; err != nil {
+		t.Fatalf("read client back: %v", err)
+	}
+	if client.Up != 35 || client.Down != 46 {
+		t.Errorf("client = %d/%d, want the buffered bytes folded in (35/46)", client.Up, client.Down)
+	}
+
+	// 冲过的增量必须清掉：再冲一次不能把同一批字节记第二遍。
+	j.Flush()
+	if err := db.Where("tag = ?", "inbound-443").First(&inbound).Error; err != nil {
+		t.Fatalf("re-read inbound: %v", err)
+	}
+	if inbound.Up != 101 {
+		t.Errorf("inbound = %d after a second flush, want the buffer to have been cleared", inbound.Up)
+	}
+}
+
+// TestFlushYieldsToAnInFlightRun 保证冲刷不会和一轮还没跑完的常规任务
+// 抢同一批增量——cron 排空超时时这是可能发生的。
+func TestFlushYieldsToAnInFlightRun(t *testing.T) {
+	testutil.InitDB(t)
+
+	j := NewCoreTrafficJob()
+	j.pendingUser = []*core.Traffic{{IsUser: true, Tag: "alice@example.com", Up: 30, Down: 40}}
+	j.running.Store(true)
+
+	j.Flush()
+
+	if len(j.pendingUser) != 1 {
+		t.Error("the retry buffer was consumed while a regular tick was still in flight")
 	}
 }

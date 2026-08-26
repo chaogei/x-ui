@@ -23,23 +23,51 @@ type fakeCore struct {
 	// false 模拟配置非法：exec 成功，内核自检失败后立刻退出。
 	aliveAfterStart bool
 
+	// traffic / trafficErr 是 GetTraffic 的编排结果，用来替代真实的
+	// v2ray_api 统计连接。
+	traffic    []*core.Traffic
+	trafficErr error
+
 	running bool
 	starts  int
 	closes  int
+
+	// steps 按发生顺序记录关键动作，用来断言"先收流量再停进程"。
+	steps []string
+
+	done chan struct{}
+}
+
+func newFakeCore(aliveAfterStart bool) *fakeCore {
+	return &fakeCore{aliveAfterStart: aliveAfterStart, done: make(chan struct{})}
+}
+
+// runningFakeCore 返回一个已经在跑的替身，省去先 Start 一次。
+func runningFakeCore() *fakeCore {
+	f := newFakeCore(true)
+	f.running = true
+	return f
 }
 
 func (f *fakeCore) Start() error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.starts++
+	f.steps = append(f.steps, "start")
 	f.running = f.aliveAfterStart
+	f.done = make(chan struct{})
+	if !f.running {
+		// 起来即崩：退出通道当场关闭，正如真实内核自检失败时那样。
+		close(f.done)
+	}
 	return nil
 }
 
 func (f *fakeCore) Stop() error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
-	f.running = false
+	f.steps = append(f.steps, "stop")
+	f.stopLocked()
 	return nil
 }
 
@@ -47,8 +75,26 @@ func (f *fakeCore) Close() error {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	f.closes++
-	f.running = false
+	f.steps = append(f.steps, "close")
+	f.stopLocked()
 	return nil
+}
+
+// crash 模拟内核自己没了：没人调过 Stop/Close，退出通道却关闭了。
+func (f *fakeCore) crash() {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.steps = append(f.steps, "crash")
+	f.stopLocked()
+}
+
+func (f *fakeCore) stopLocked() {
+	f.running = false
+	select {
+	case <-f.done:
+	default:
+		close(f.done)
+	}
 }
 
 func (f *fakeCore) IsRunning() bool {
@@ -57,16 +103,34 @@ func (f *fakeCore) IsRunning() bool {
 	return f.running
 }
 
-func (f *fakeCore) GetErr() error                            { return nil }
-func (f *fakeCore) GetResult() string                        { return "" }
-func (f *fakeCore) GetVersion() string                       { return "fake" }
-func (f *fakeCore) GetConfig() core.Config                   { return staleConfig{} }
-func (f *fakeCore) GetTraffic(bool) ([]*core.Traffic, error) { return nil, nil }
+func (f *fakeCore) Done() <-chan struct{} {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return f.done
+}
+
+func (f *fakeCore) GetErr() error          { return nil }
+func (f *fakeCore) GetResult() string      { return "" }
+func (f *fakeCore) GetVersion() string     { return "fake" }
+func (f *fakeCore) GetConfig() core.Config { return staleConfig{} }
+
+func (f *fakeCore) GetTraffic(bool) ([]*core.Traffic, error) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.steps = append(f.steps, "traffic")
+	return f.traffic, f.trafficErr
+}
 
 func (f *fakeCore) counts() (starts, closes int) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	return f.starts, f.closes
+}
+
+func (f *fakeCore) trace() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.steps...)
 }
 
 // staleConfig 与任何配置都不等价，逼 RestartCore 走真正的重启分支。
@@ -119,7 +183,7 @@ func markStartPending(t *testing.T) {
 // 配置非法时 sing-box 正常 fork、校验、然后自己退出。RestartCore 返回 nil，
 // 于是旧实现每次都把退避复位——退避看着装好了，实际上从来没生效过。
 func TestSettleLastStartBacksOffWhenTheCoreDiesImmediately(t *testing.T) {
-	clock := withCoreState(t, &fakeCore{aliveAfterStart: false})
+	clock := withCoreState(t, newFakeCore(false))
 	s := &CoreService{}
 	markStartPending(t)
 
@@ -148,7 +212,7 @@ func TestSettleLastStartBacksOffWhenTheCoreDiesImmediately(t *testing.T) {
 // TestSettleLastStartResetsWhenTheCoreSurvives 保证用户改好配置之后
 // 不必再等一个长窗口。
 func TestSettleLastStartResetsWhenTheCoreSurvives(t *testing.T) {
-	withCoreState(t, &fakeCore{aliveAfterStart: true, running: true})
+	withCoreState(t, runningFakeCore())
 	s := &CoreService{}
 
 	state.backoff.Fail()
@@ -170,7 +234,7 @@ func TestSettleLastStartResetsWhenTheCoreSurvives(t *testing.T) {
 
 // TestSettleLastStartIsANoopWithoutAPendingStart 防止每个 tick 都去动退避。
 func TestSettleLastStartIsANoopWithoutAPendingStart(t *testing.T) {
-	withCoreState(t, &fakeCore{})
+	withCoreState(t, newFakeCore(false))
 	s := &CoreService{}
 
 	state.backoff.Fail()
@@ -189,7 +253,7 @@ func TestSettleLastStartIsANoopWithoutAPendingStart(t *testing.T) {
 // TestRestartCoreIfNeededKeepsTheFlagWhileBackingOff 保证退避期间标志不丢：
 // 丢了的话内核就再也不会被拉起来。
 func TestRestartCoreIfNeededKeepsTheFlagWhileBackingOff(t *testing.T) {
-	proc := &fakeCore{aliveAfterStart: false}
+	proc := newFakeCore(false)
 	withCoreState(t, proc)
 	s := &CoreService{}
 
@@ -208,7 +272,7 @@ func TestRestartCoreIfNeededKeepsTheFlagWhileBackingOff(t *testing.T) {
 // TestStopCoreClearsThePendingStart 保证运维主动停机不会被误判成崩溃，
 // 从而被自动拉起来。
 func TestStopCoreClearsThePendingStart(t *testing.T) {
-	withCoreState(t, &fakeCore{aliveAfterStart: true, running: true})
+	withCoreState(t, runningFakeCore())
 	s := &CoreService{}
 	markStartPending(t)
 

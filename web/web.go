@@ -105,6 +105,9 @@ type Server struct {
 	loginLimiter *service.LoginLimiter
 
 	cron *cron.Cron
+	// trafficJob 在 Stop 时还要用一次：它手里可能攒着写库失败、
+	// 等着下一轮重投的流量增量，见 CoreTrafficJob.Flush。
+	trafficJob *job.CoreTrafficJob
 
 	ctx    context.Context
 	cancel context.CancelFunc
@@ -312,7 +315,8 @@ func (s *Server) startTask() {
 	// 每 30 秒检查一次 sing-box 是否在运行
 	s.cron.AddJob("@every 30s", guarded.Then(job.NewCheckCoreRunningJob()))
 	// 每 10 秒统计一次流量（内核未运行时直接跳过）
-	s.cron.AddJob("@every 10s", guarded.Then(job.NewCoreTrafficJob()))
+	s.trafficJob = job.NewCoreTrafficJob()
+	s.cron.AddJob("@every 10s", guarded.Then(s.trafficJob))
 	// 每 10 秒消费一次"需要重启内核"的标志，失败时按指数退避
 	s.cron.AddJob("@every 10s", guarded.Then(job.NewCoreRestartJob()))
 	// 每 30 秒检查一次 inbound 流量超出和到期的情况
@@ -477,7 +481,13 @@ func (s *Server) Stop() error {
 			logger.Warning("background jobs did not finish within", cronDrainTimeout)
 		}
 	}
+	// StopCore 会先把内核侧最后一段流量收进库再让进程走。
 	_ = s.coreService.StopCore()
+	// 内核已经停了，此刻把重投缓冲里的陈年增量也冲掉：再往后就没有
+	// 任何一轮任务会去碰它们了。
+	if s.trafficJob != nil {
+		s.trafficJob.Flush()
+	}
 
 	var err1 error
 	var err2 error

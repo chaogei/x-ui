@@ -38,6 +38,10 @@ type coreState struct {
 	// startPending 表示最近一次启动的结果还没结算，见 settleLastStart。
 	startPending bool
 
+	// stopRequested 记录当前这个 proc 是被面板主动停掉的。
+	// 退出监视器靠它区分"运维按了停止"与"内核自己没了"。
+	stopRequested bool
+
 	needRestart atomic.Bool
 	// backoff 是失败重启的节流阀，内部自带互斥。
 	backoff *Backoff
@@ -192,6 +196,8 @@ func (s *CoreService) RestartCore(force bool) error {
 			logger.Debug("sing-box config unchanged, skip restart")
 			return nil
 		}
+		// 杀掉进程之前先把内核侧的计数器收走，否则这一段流量随进程一起蒸发。
+		s.drainTrafficLocked(state.proc)
 		// 不管进程是否还活着都要 Close：崩溃退出的实例仍握着一条到
 		// v2ray_api 的 gRPC 连接，它会在后台永远重连一个没人监听的端口。
 		// Close 在进程仍在运行时内部走 graceful stop，阻塞到端口释放，
@@ -202,17 +208,84 @@ func (s *CoreService) RestartCore(force bool) error {
 		state.proc = nil
 	}
 
-	state.proc = singbox.NewProcess(cfg)
+	proc := singbox.NewProcess(cfg)
+	state.proc = proc
 	state.lastResult = ""
+	state.stopRequested = false
 	// 每次真正拉起进程都记一次。这个计数持续增长通常意味着配置有问题，
 	// 内核起来就崩——从面板 UI 上很难看出来，从曲线上一眼就能看出来。
 	metrics.RecordCoreRestart()
-	if err := state.proc.Start(); err != nil {
+	if err := proc.Start(); err != nil {
 		return err
 	}
 	// fork 成功不等于内核活下来了，结果留给下一个周期结算。
 	state.startPending = true
+	go s.watchCoreExit(proc, proc.Done())
 	return nil
+}
+
+// watchCoreExit 在内核进程退出的那一刻举起重启标志。
+//
+// 没有它的话，"内核崩了"要靠 CheckCoreRunningJob 连续两次探活才能发现：
+// 30 秒一轮、连中两轮才算数，再加上重启任务自己的 10 秒周期，最坏情况下
+// 用户要断线一分多钟。等 Done 通道把这段延迟压成零。
+//
+// 三个不该重启的情形在这里被挡掉：
+//   - 面板主动停机（StopCore）——stopRequested 标记；
+//   - RestartCore 换掉了这个实例——state.proc 已经不是它了；
+//   - 面板还在退避窗口里——标志由 RestartCoreIfNeeded 消费，退避照旧生效，
+//     所以这条快路只是让第一次重试来得更早，不会让崩溃循环转得更快。
+func (s *CoreService) watchCoreExit(proc core.Core, done <-chan struct{}) {
+	<-done
+
+	state.mu.Lock()
+	current := state.proc == proc
+	deliberate := state.stopRequested
+	if current && !deliberate {
+		// 进程已经没了，把最终输出定格下来供 UI 展示。
+		state.lastResult = proc.GetResult()
+	}
+	state.mu.Unlock()
+
+	if !current || deliberate {
+		return
+	}
+	logger.Warning("sing-box exited on its own, scheduling a restart")
+	s.SetToNeedRestart()
+}
+
+// drainTrafficLocked 在停掉 proc 之前把内核侧的计数器落库。
+//
+// sing-box 的计数器是 reset-on-read 的，且只活在进程内存里：进程一死，
+// 上一次 CoreTrafficJob 之后攒下的那批字节就永远消失了。流量任务 10 秒一轮，
+// 而增删一个入站、改一个客户端都会重启内核——用户每改一次配置就白嫖掉
+// 最多一整轮的配额，改得越勤漏得越多。
+//
+// 调用方必须持有 state.mu，所以这里直接用 proc.GetTraffic
+// 而不是会重新加锁的 GetCoreTraffic。
+//
+// 失败只记日志：停机流程不该因为库写不进去而卡住，而这批字节到这一步
+// 已经没有别的去处了。
+func (s *CoreService) drainTrafficLocked(proc core.Core) {
+	if proc == nil || !proc.IsRunning() {
+		return
+	}
+	traffics, err := proc.GetTraffic(true)
+	if err != nil {
+		logger.Warning("draining sing-box traffic before stopping it failed:", err)
+		return
+	}
+	if len(traffics) == 0 {
+		return
+	}
+	// 同一批计数器同时承载 inbound 与 user 两个维度，两边各自入账，
+	// 与 CoreTrafficJob 的常规轮次保持一致。
+	if err := s.inboundService.AddTraffic(traffics); err != nil {
+		logger.Error("persisting inbound traffic before stopping sing-box failed, those bytes are lost:", err)
+	}
+	if err := s.clientService.AddTraffic(traffics); err != nil {
+		logger.Error("persisting client traffic before stopping sing-box failed, those bytes are lost:", err)
+	}
 }
 
 // StopCore 终止 sing-box 子进程。
@@ -220,11 +293,15 @@ func (s *CoreService) StopCore() error {
 	state.mu.Lock()
 	defer state.mu.Unlock()
 	logger.Debug("stop sing-box")
-	// 这是一次有意的停止，不该被 settleLastStart 当成"启动后崩溃"。
+	// 这是一次有意的停止，不该被 settleLastStart 当成"启动后崩溃"，
+	// 也不该被 watchCoreExit 当成需要自动拉起的意外退出。
 	state.startPending = false
+	state.stopRequested = true
 	if state.proc == nil || !state.proc.IsRunning() {
 		return errors.New("sing-box is not running")
 	}
+	// 先把这一轮的流量收进库，再让进程走。
+	s.drainTrafficLocked(state.proc)
 	err := state.proc.Stop()
 	// 进程已经结束，下一次 GetCoreResult 要能拿到最终输出。
 	state.lastResult = state.proc.GetResult()
