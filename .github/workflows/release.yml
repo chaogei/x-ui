@@ -9,6 +9,7 @@ on:
 env:
   SINGBOX_VERSION: "1.11.0"
   GO_VERSION: "1.22"
+  NODE_VERSION: "22"
   # 构建标志：
   #  -trimpath      去除本地路径信息，便于复现构建
   #  -s -w          去除符号表与 DWARF 调试信息，减小二进制体积
@@ -37,6 +38,24 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: ${{ env.GO_VERSION }}
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/frontend/package-lock.json
+
+      # 面板界面全部由 web/assets/dist/ 里的 Vite 产物渲染，而这份产物是
+      # //go:embed 进二进制的。仓库里虽然提交了一份，发布构建仍然重新生成：
+      # 发出去的包必须对应这个 tag 的前端源码，而不是某次提交时的快照。
+      - name: Build frontend
+        run: |
+          set -euo pipefail
+          npm --prefix web/frontend ci
+          npm --prefix web/frontend run build:fast
+          test -s web/assets/dist/xui.js
+          test -s web/assets/dist/xui.css
 
       # SQLite 驱动改为纯 Go 的 glebarez/sqlite 后不再需要 cgo，
       # 交叉编译也不用装 gcc-aarch64 / gcc-s390x 工具链。

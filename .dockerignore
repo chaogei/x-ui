@@ -1,0 +1,14 @@
+# node_modules 是几百 MB 的平台相关产物，进构建上下文只会拖慢 docker build，
+# 而且 Linux 镜像里用不上宿主机（可能是 macOS）装出来的 esbuild 二进制。
+# 前端依赖由 Dockerfile 的 frontend stage 用 npm ci 自己装。
+node_modules
+web/frontend/node_modules
+
+.git
+.github
+dist/
+tmp
+*.tar.gz
+x-ui-*.tar.gz
+/x-ui
+.idea

@@ -14,8 +14,54 @@ concurrency:
 
 env:
   GO_VERSION: "1.22"
+  NODE_VERSION: "22"
 
 jobs:
+  # 面板的前端是 Vite + Vue 3，产物 web/assets/dist/ 被 //go:embed 进二进制并且
+  # 提交进了仓库 —— 这样没装 Node 的人 `go build` 出来的面板也是能用的。
+  # 代价是产物可能变陈旧：改了 .vue 忘了重新构建，CI 全绿，用户拿到的是旧界面。
+  # 这个 job 就是那道闸：重新构建一次，产物必须和仓库里的逐字节一致。
+  #
+  # 之所以敢做逐字节比对：依赖全部由 package-lock.json 锁定（npm ci），
+  # 同一份源码连续构建的输出是稳定的。若哪天 Node 大版本升级导致 minifier
+  # 输出漂移，改 NODE_VERSION 的那个 PR 顺手重新构建提交即可。
+  frontend:
+    name: frontend build / typecheck
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: npm
+          cache-dependency-path: web/frontend/package-lock.json
+
+      # 用 ci 而不是 install：锁文件与 package.json 不一致时直接失败，
+      # 而不是悄悄改写锁文件后继续。
+      - name: Install dependencies
+        working-directory: web/frontend
+        run: npm ci
+
+      - name: Typecheck
+        working-directory: web/frontend
+        run: npm run typecheck
+
+      - name: Build
+        working-directory: web/frontend
+        run: npm run build:fast
+
+      - name: Committed bundle is up to date
+        run: |
+          set -euo pipefail
+          if ! git diff --quiet -- web/assets/dist; then
+            echo "::error::web/assets/dist is stale — the committed bundle does not match a fresh build."
+            echo "Run 'npm --prefix web/frontend ci && npm --prefix web/frontend run build' and commit the result."
+            git --no-pager diff --stat -- web/assets/dist
+            exit 1
+          fi
+
   build-and-test:
     name: build / vet / test
     runs-on: ubuntu-latest
