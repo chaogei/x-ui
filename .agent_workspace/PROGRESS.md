@@ -16,9 +16,51 @@
 
 ## Round 状态
 
-- Round 1: **complete**（F2 首次因策略拦截失败，已用去敏化提示重跑成功；未换模型）
-- Round 2: **in progress**
-- Round 3: pending
+- Round 1: **complete**
+- Round 2: **complete**
+- Round 3: **in progress**
+
+---
+
+# 《Round 2 结论简报》
+
+## 演进对比
+
+Baseline (main e65c443) → R1 (WAL/batch/poll/bundle) → R2 (mutex/resetTraffic/gzip/CSP/TOTP/pumpLogs/parser)
+
+## 已关闭
+
+- H1 ServerController race：RWMutex + cron-started tests（-race 绿）
+- H3 入站 save 覆盖计数：Omit up/down + `POST resetTraffic`；前端改走专用接口
+- M4 TOTP 条件 UPDATE
+- M5 pumpLogs WaitGroup
+- CSRF 恒定时间；assets gzip；CSP 去掉 unsafe-eval
+- stats 解析去正则：2000 counters ~9× / allocs −80%
+- SkipIfStillRunning + Recover 包装 cron
+
+## 仍开放（Round 3）
+
+- H2 persist-before-reset 仍是 GetTraffic(true)+内存 carry；关机未强制 flush
+- waitDone 事件驱动重启未做（仍 30s×2 探测）
+- 死代码/过期注释清扫未完
+- 流量 pending 在 core down 时不 flush
+
+## SOTA 验收差距
+
+F2 R2 原判 CONDITIONAL PASS。H1/H3/M4 现已落地。剩余 H2 与事件驱动监督是冲刺项。
+
+## 性能
+
+- Bundle ~1.25MiB → wire gzip ~383KB
+- aggregateTraffic 2000 counters: ~1.75ms/5k allocs → ~0.20ms/1k allocs
+
+## Round 3 冲刺
+
+1. 停核前 drain stats；关机 flush pending
+2. 可选：waitDone 触发重启标志
+3. 死代码清扫
+4. 全量 -race + bench 复测
+5. Fable PASS/CONDITIONAL/FAIL
 
 ---
 
