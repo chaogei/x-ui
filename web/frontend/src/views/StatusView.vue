@@ -162,7 +162,7 @@ onBeforeUnmount(() => {
             <div class="xui-tile__gauge">
               <a-progress
                 type="dashboard"
-                :size="128"
+                :size="118"
                 :stroke-color="gaugeColor(g.percent)"
                 trail-color="rgba(255, 255, 255, 0.1)"
                 :percent="g.percent"
@@ -174,7 +174,6 @@ onBeforeUnmount(() => {
       </section>
 
       <section>
-        <h2 class="xui-section-title">{{ t('sing_box_status') }}</h2>
         <div class="xui-tiles xui-tiles--wide">
           <article class="xui-tile xui-glass">
             <span class="xui-tile__label">{{ t('sing_box_status') }}</span>

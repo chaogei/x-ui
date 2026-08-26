@@ -154,21 +154,43 @@ function showClients(row: DBInbound): void {
   clientsOpen.value = true
 }
 
+// 列宽合计 1150，正好塞得进 1440 视口减去侧边栏与页边距之后剩下的宽度：
+// 常见桌面尺寸下表格根本不横向滚动，也就不会有任何一列被钉住的操作列压住。
 const columns = computed(() => [
-  { title: t('enable'), key: 'enable', width: 80, align: 'center' as const },
-  { title: t('inbound_id'), dataIndex: 'id', key: 'id', width: 60, align: 'center' as const },
-  { title: t('remark'), dataIndex: 'remark', key: 'remark', width: 140 },
-  { title: t('protocol'), key: 'protocol', width: 110, align: 'center' as const },
-  { title: t('port'), dataIndex: 'port', key: 'port', width: 80, align: 'center' as const },
-  { title: t('traffic_up_down'), key: 'traffic', width: 210, align: 'center' as const },
-  { title: t('stream_settings'), key: 'stream', width: 140, align: 'center' as const },
-  { title: t('expiry_time'), key: 'expiryTime', width: 170, align: 'center' as const },
-  // 操作列钉在右侧：所有列加起来比常见视口宽，表格会横向滚动，而这一列正是
-  // 用得最多的。不钉住的话它默认落在滚动区最右端，开箱就是看不见的状态。
-  { title: t('operation'), key: 'action', width: 280, align: 'center' as const, fixed: 'right' as const },
+  { title: t('enable'), key: 'enable', width: 68, align: 'center' as const },
+  { title: t('inbound_id'), dataIndex: 'id', key: 'id', width: 52, align: 'center' as const },
+  { title: t('remark'), dataIndex: 'remark', key: 'remark', width: 150 },
+  { title: t('protocol'), key: 'protocol', width: 96, align: 'center' as const },
+  { title: t('port'), dataIndex: 'port', key: 'port', width: 76, align: 'center' as const },
+  { title: t('traffic_up_down'), key: 'traffic', width: 190, align: 'center' as const },
+  { title: t('stream_settings'), key: 'stream', width: 120, align: 'center' as const },
+  { title: t('expiry_time'), key: 'expiryTime', width: 150, align: 'center' as const },
+  // 更窄的视口下表格仍会横向滚动，此时操作列必须钉在右侧：不钉住的话它落在
+  // 滚动区最右端，开箱就是看不见的状态。
+  { title: t('operation'), key: 'action', width: 248, align: 'center' as const, fixed: 'right' as const },
 ])
 
-onMounted(load)
+/**
+ * 窄屏改用卡片列表。
+ *
+ * 一张 1150px 的表格塞进 360px 的视口，横向滚动之外还有一列钉在右边——
+ * 操作列一个人就占掉视口的三分之二，剩下的部分谁也读不了。手机上把每个入站
+ * 摊成一张卡片，信息一条不少，而且不用横向滚。
+ */
+const narrow = ref(false)
+
+onMounted(() => {
+  void load()
+
+  const mq = window.matchMedia?.('(max-width: 768px)')
+  if (!mq) {
+    return
+  }
+  narrow.value = mq.matches
+  mq.addEventListener('change', (e) => {
+    narrow.value = e.matches
+  })
+})
 </script>
 
 <template>
@@ -205,14 +227,66 @@ onMounted(load)
       </a-button>
     </div>
 
-    <div class="xui-panel xui-panel--flush xui-glass xui-table">
+    <div v-if="narrow" class="xui-cards">
+      <article v-for="(row, index) in dbInbounds" :key="row.id" class="xui-card-row xui-glass">
+        <header class="xui-card-row__head">
+          <a-switch :checked="row.enable" @change="(v: any) => { row.enable = !!v; saveRow(row) }" />
+          <span class="xui-card-row__name">{{ row.remark || '#' + row.id }}</span>
+          <a-tag color="blue">{{ row.protocol }}</a-tag>
+        </header>
+        <dl class="xui-card-row__facts">
+          <div>
+            <dt>{{ t('port') }}</dt>
+            <dd>{{ row.port }}</dd>
+          </div>
+          <div>
+            <dt>{{ t('traffic_up_down') }}</dt>
+            <dd>{{ sizeFormat(row.up) }} / {{ sizeFormat(row.down) }}</dd>
+          </div>
+          <div>
+            <dt>{{ t('stream_settings') }}</dt>
+            <dd>
+              {{
+                [
+                  inbounds[index]?.transportType,
+                  inbounds[index]?.tls ? 'tls' : '',
+                  inbounds[index]?.settings?.tls?.reality?.enabled ? 'reality' : '',
+                ]
+                  .filter(Boolean)
+                  .join(' · ') || t('none')
+              }}
+            </dd>
+          </div>
+          <div>
+            <dt>{{ t('expiry_time') }}</dt>
+            <dd>{{ row.expiryTime > 0 ? formatMillis(row.expiryTime) : t('unlimited') }}</dd>
+          </div>
+        </dl>
+        <footer class="xui-card-row__actions">
+          <a @click="showInfo(row)">{{ t('view') }}</a>
+          <a @click="showClients(row)">{{ t('client_list') }}</a>
+          <a v-if="row.hasLink()" @click="showQrcode(row)">{{ t('qrcode') }}</a>
+          <a @click="openEdit(row)">{{ t('edit') }}</a>
+          <a @click="resetTraffic(row)">{{ t('reset_traffic') }}</a>
+          <a class="xui-danger-link" @click="remove(row)">{{ t('delete') }}</a>
+        </footer>
+      </article>
+
+      <div v-if="!dbInbounds.length" class="xui-empty xui-glass">
+        <span class="xui-empty__mark" aria-hidden="true"><InboxOutlined /></span>
+        <p class="xui-empty__title">{{ t('inbound_empty') }}</p>
+        <p class="xui-empty__hint">{{ t('inbound_empty_hint') }}</p>
+      </div>
+    </div>
+
+    <div v-else class="xui-panel xui-panel--flush xui-glass xui-table">
       <a-table
         :columns="columns"
         :data-source="dbInbounds"
         :loading="spinning"
         row-key="id"
         :pagination="false"
-        :scroll="{ x: 1300 }"
+        :scroll="{ x: 1150 }"
         size="middle"
       >
         <template #emptyText>

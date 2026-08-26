@@ -28,11 +28,13 @@
   --xui-text-2: rgba(255, 255, 255, 0.72);
   --xui-text-3: rgba(255, 255, 255, 0.55);
 
-  --xui-glass-bg: rgba(255, 255, 255, 0.06);
-  --xui-glass-bg-strong: rgba(255, 255, 255, 0.1);
-  --xui-glass-border: rgba(255, 255, 255, 0.16);
-  --xui-glass-border-soft: rgba(255, 255, 255, 0.09);
+  --xui-glass-bg: rgba(255, 255, 255, 0.08);
+  --xui-glass-bg-strong: rgba(255, 255, 255, 0.12);
+  --xui-glass-border: rgba(255, 255, 255, 0.18);
+  --xui-glass-border-soft: rgba(255, 255, 255, 0.11);
   --xui-glass-blur: blur(22px) saturate(150%);
+  --xui-glass-blur-strong: blur(30px) saturate(160%);
+  --xui-topbar-bg: rgba(255, 255, 255, 0.04);
   --xui-glass-highlight: linear-gradient(
     180deg,
     rgba(255, 255, 255, 0.1) 0%,
@@ -85,25 +87,26 @@ body {
 body::before {
   content: '';
   position: fixed;
-  inset: -18vmax;
+  inset: -10vmax;
   z-index: -2;
   background-color: var(--xui-bg-base);
   background-image:
-    radial-gradient(46% 38% at 12% 8%, rgba(67, 97, 238, 0.5) 0%, rgba(67, 97, 238, 0) 100%),
-    radial-gradient(40% 34% at 88% 4%, rgba(45, 212, 191, 0.28) 0%, rgba(45, 212, 191, 0) 100%),
-    radial-gradient(52% 44% at 78% 88%, rgba(124, 58, 237, 0.34) 0%, rgba(124, 58, 237, 0) 100%),
-    radial-gradient(38% 32% at 24% 92%, rgba(14, 165, 233, 0.22) 0%, rgba(14, 165, 233, 0) 100%);
+    radial-gradient(42% 36% at 14% 10%, rgba(67, 97, 238, 0.62) 0%, rgba(67, 97, 238, 0) 100%),
+    radial-gradient(36% 32% at 86% 6%, rgba(45, 212, 191, 0.34) 0%, rgba(45, 212, 191, 0) 100%),
+    radial-gradient(48% 42% at 80% 86%, rgba(124, 58, 237, 0.46) 0%, rgba(124, 58, 237, 0) 100%),
+    radial-gradient(34% 30% at 20% 88%, rgba(14, 165, 233, 0.28) 0%, rgba(14, 165, 233, 0) 100%),
+    radial-gradient(30% 26% at 52% 46%, rgba(59, 130, 246, 0.16) 0%, rgba(59, 130, 246, 0) 100%);
   animation: xui-drift 48s var(--xui-ease) infinite alternate;
 }
 
-/* 极细颗粒。纯渐变在大屏上会出现色带，一点噪声就能压住。 */
+/* 极细颗粒。纯渐变在大屏上会出现色带，一点噪声就能压住——只要一点。 */
 body::after {
   content: '';
   position: fixed;
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  opacity: 0.35;
+  opacity: 0.12;
   background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
   background-size: 160px 160px;
 }
@@ -242,10 +245,10 @@ body::after {
   gap: 12px;
   height: var(--xui-topbar-height);
   padding: 0 24px 0 16px;
-  background: rgba(255, 255, 255, 0.04);
+  background: var(--xui-topbar-bg);
   border-bottom: 1px solid var(--xui-glass-border-soft);
-  -webkit-backdrop-filter: blur(18px) saturate(140%);
-  backdrop-filter: blur(18px) saturate(140%);
+  -webkit-backdrop-filter: var(--xui-glass-blur);
+  backdrop-filter: var(--xui-glass-blur);
 }
 
 .xui-topbar__toggle {
@@ -351,6 +354,16 @@ body::after {
   padding: 32px 20px;
 }
 
+/* 卡片正后方补一圈靛蓝光晕：极光在视口中心最淡，不补的话卡片会陷进底图里。 */
+.xui-login::before {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  background: radial-gradient(36% 40% at 50% 47%, rgba(67, 97, 238, 0.34) 0%, rgba(67, 97, 238, 0) 100%);
+}
+
 .xui-login__card {
   width: 100%;
   max-width: 400px;
@@ -419,10 +432,14 @@ body::after {
   color: var(--xui-text-3);
 }
 
+/*
+  auto-fit 而不是 antd 的栅格：空轨道会被折叠，所以同一条规则在 390px 上是
+  两列、在 1440px 上是四列，中间不需要任何断点，也不用 matchMedia。
+*/
 .xui-tiles {
   display: grid;
   gap: 16px;
-  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(168px, 1fr));
 }
 
 .xui-tiles--wide {
@@ -433,7 +450,7 @@ body::after {
   display: flex;
   flex-direction: column;
   gap: 10px;
-  padding: 18px 20px;
+  padding: 18px 16px;
 }
 
 .xui-tile__label {
@@ -516,6 +533,70 @@ body::after {
 
 .xui-toolbar__spacer {
   flex: 1;
+}
+
+/* 窄屏的入站卡片列表，与表格互斥（见 InboundsView 的 narrow）。 */
+.xui-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.xui-card-row {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  padding: 16px;
+}
+
+.xui-card-row__head {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.xui-card-row__name {
+  flex: 1;
+  min-width: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--xui-text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.xui-card-row__facts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 14px;
+  margin: 0;
+}
+
+.xui-card-row__facts dt {
+  margin: 0;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+  color: var(--xui-text-3);
+}
+
+.xui-card-row__facts dd {
+  margin: 2px 0 0;
+  font-size: 13.5px;
+  color: var(--xui-text);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+
+.xui-card-row__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px 14px;
+  padding-top: 10px;
+  border-top: 1px solid var(--xui-glass-border-soft);
+  font-size: 13.5px;
 }
 
 .xui-empty {
@@ -677,11 +758,14 @@ body::after {
 }
 
 /*
-  侧边栏收起时 antd 会在右缘挂一个绝对定位的浮动把手，它压在内容区左上角，
-  能把设置页第一个 tab 遮掉一半。顶栏里已经有一个明确的折叠按钮（两种状态
-  都在），这个把手是多余的且位置不受控，直接收掉。
+  侧边栏那个浮动把手是绝对定位在内容区左上角的，会压住页面第一行内容
+  （设置页的第一个 tab 就被它遮掉过一半）。顶栏里已经有一个两种状态都在的
+  折叠按钮，这个把手既多余、位置又不受控，直接收掉。
+
+  选择器要三个类：antd 自己那条是 `.ant-layout-sider .ant-…-zero-width-trigger`
+  （两个类），单类规则压不过它——即便本文件排在后面。
 */
-.ant-layout-sider-zero-width-trigger {
+.xui-shell .ant-layout-sider .ant-layout-sider-zero-width-trigger {
   display: none;
 }
 
@@ -765,25 +849,40 @@ body::after {
 /*
   钉住的列必须自带底色，否则横向滚动时下面的内容会从它身上穿过去 ——
   而这一列恰恰是操作列，看不清等于用不了。
+
+  但只在真的滚得动的时候才上底色：ping-left / ping-right 正是 antd 用来表示
+  "这个方向还有内容藏着"的标记。表格宽度够用时（常见桌面尺寸下就是如此）
+  钉住的列和普通列长得一样，不会平白多出一条深色竖带。
 */
-.xui-table .ant-table-cell-fix-left,
-.xui-table .ant-table-cell-fix-right {
+.xui-table .ant-table-ping-left .ant-table-cell-fix-left,
+.xui-table .ant-table-ping-right .ant-table-cell-fix-right {
   background: var(--xui-fixed-cell-bg);
-  -webkit-backdrop-filter: blur(14px);
-  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: var(--xui-glass-blur);
+  backdrop-filter: var(--xui-glass-blur);
 }
 
-.xui-table .ant-table-tbody > tr.ant-table-row:hover > td.ant-table-cell-fix-left,
-.xui-table .ant-table-tbody > tr.ant-table-row:hover > td.ant-table-cell-fix-right {
+.xui-table .ant-table-ping-left .ant-table-tbody > tr.ant-table-row:hover > td.ant-table-cell-fix-left,
+.xui-table .ant-table-ping-right .ant-table-tbody > tr.ant-table-row:hover > td.ant-table-cell-fix-right {
   background: rgba(24, 31, 52, 0.96);
 }
 
-.xui-table .ant-table .ant-table-thead > tr > th.ant-table-cell-fix-right {
+/*
+  表头同理。ping 标记挂在 .ant-table 自己身上（不是外层 wrapper），所以这里
+  是 .ant-table-ping-right.ant-table 的复合写法；分开写会要求两层嵌套，选不中。
+  权重也必须压过上面那条给所有 th 上半透明底色的规则。
+*/
+.xui-table .ant-table-ping-left.ant-table .ant-table-thead > tr > th.ant-table-cell-fix-left,
+.xui-table .ant-table-ping-right.ant-table .ant-table-thead > tr > th.ant-table-cell-fix-right {
   background: var(--xui-fixed-cell-bg);
 }
 
+/* 钉住列与滚动内容之间要有一条明确的分界，否则两边的字看起来是连着的。 */
+.xui-table .ant-table-ping-right .ant-table-cell-fix-right-first {
+  border-inline-start: 1px solid var(--xui-glass-border-soft);
+}
+
 .xui-table .ant-table-ping-right .ant-table-cell-fix-right-first::after {
-  box-shadow: inset -12px 0 12px -10px rgba(0, 0, 0, 0.6);
+  box-shadow: inset -12px 0 14px -10px rgba(0, 0, 0, 0.7);
 }
 
 .xui-table .ant-table-body::-webkit-scrollbar,
@@ -805,8 +904,8 @@ body::after {
   background: var(--xui-elevated-bg);
   border: 1px solid var(--xui-glass-border);
   box-shadow: var(--xui-shadow-lg);
-  -webkit-backdrop-filter: blur(30px) saturate(160%);
-  backdrop-filter: blur(30px) saturate(160%);
+  -webkit-backdrop-filter: var(--xui-glass-blur-strong);
+  backdrop-filter: var(--xui-glass-blur-strong);
 }
 
 .ant-modal .ant-modal-content {
@@ -830,21 +929,21 @@ body::after {
   background: var(--xui-elevated-bg);
   border: 1px solid var(--xui-glass-border-soft);
   box-shadow: var(--xui-shadow-lg);
-  -webkit-backdrop-filter: blur(26px) saturate(150%);
-  backdrop-filter: blur(26px) saturate(150%);
+  -webkit-backdrop-filter: var(--xui-glass-blur-strong);
+  backdrop-filter: var(--xui-glass-blur-strong);
 }
 
 .ant-tooltip .ant-tooltip-inner {
-  -webkit-backdrop-filter: blur(18px);
-  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: var(--xui-glass-blur);
+  backdrop-filter: var(--xui-glass-blur);
   border: 1px solid var(--xui-glass-border-soft);
 }
 
 .ant-message .ant-message-notice-content {
   background: var(--xui-elevated-bg);
   border: 1px solid var(--xui-glass-border-soft);
-  -webkit-backdrop-filter: blur(22px) saturate(150%);
-  backdrop-filter: blur(22px) saturate(150%);
+  -webkit-backdrop-filter: var(--xui-glass-blur);
+  backdrop-filter: var(--xui-glass-blur);
 }
 
 /* --- 标签页 --- */
@@ -965,9 +1064,11 @@ body::after {
     --xui-glass-border: rgba(255, 255, 255, 0.22);
     --xui-glass-border-soft: rgba(255, 255, 255, 0.14);
     --xui-glass-blur: none;
+    --xui-glass-blur-strong: none;
     --xui-glass-highlight: none;
     --xui-elevated-bg: #151c31;
     --xui-fixed-cell-bg: #10162a;
+    --xui-topbar-bg: #0e1424;
   }
 
   body::before {
@@ -985,5 +1086,6 @@ body::after {
     --xui-glass-bg-strong: rgba(27, 35, 56, 0.94);
     --xui-elevated-bg: rgba(21, 28, 49, 0.98);
     --xui-fixed-cell-bg: rgba(16, 22, 42, 0.99);
+    --xui-topbar-bg: rgba(14, 20, 36, 0.92);
   }
 }
