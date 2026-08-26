@@ -7,6 +7,7 @@ import (
 	"x-ui/database/model"
 	"x-ui/logger"
 	"x-ui/web/job"
+	"x-ui/web/metrics"
 	"x-ui/web/service"
 	"x-ui/web/session"
 
@@ -59,6 +60,7 @@ func (a *IndexController) login(c *gin.Context) {
 		service.Audit(c, service.EventLoginLocked, "locked", map[string]interface{}{
 			"retry_after_sec": int(retry.Seconds()),
 		})
+		metrics.RecordLoginFailure(metrics.ReasonLocked)
 		pureJsonMsg(c, false, I18n(c, "auth_ip_locked"))
 		return
 	}
@@ -89,6 +91,7 @@ func (a *IndexController) login(c *gin.Context) {
 			"remaining": remaining,
 			"locked":    locked,
 		})
+		metrics.RecordLoginFailure(metrics.ReasonBadCredentials)
 		pureJsonMsg(c, false, I18n(c, "auth_invalid_credentials"))
 		return
 	}
@@ -154,6 +157,7 @@ func (a *IndexController) checkTwoFactor(c *gin.Context, user *model.User, form 
 			"remaining": remaining,
 			"locked":    locked,
 		})
+		metrics.RecordLoginFailure(metrics.ReasonTwoFactor)
 		pureJsonMsg(c, false, I18n(c, "auth_totp_invalid"))
 		return false
 	}

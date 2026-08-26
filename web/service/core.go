@@ -12,6 +12,7 @@ import (
 	"x-ui/database/model"
 	"x-ui/logger"
 	"x-ui/util/json_util"
+	"x-ui/web/metrics"
 
 	"go.uber.org/atomic"
 )
@@ -183,6 +184,9 @@ func (s *CoreService) RestartCore(force bool) error {
 
 	state.proc = singbox.NewProcess(cfg)
 	state.lastResult = ""
+	// 每次真正拉起进程都记一次。这个计数持续增长通常意味着配置有问题，
+	// 内核起来就崩——从面板 UI 上很难看出来，从曲线上一眼就能看出来。
+	metrics.RecordCoreRestart()
 	return state.proc.Start()
 }
 

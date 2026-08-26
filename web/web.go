@@ -180,6 +180,8 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 	engine.Use(gin.Recovery())
 	// 访问日志：只记录方法/路径/状态/耗时/客户端 IP，绝不记录请求体（登录表单含密码）。
 	engine.Use(middleware.AccessLog())
+	// 指标中间件按路由模板计数，必须在业务路由之前挂上才能覆盖全部请求。
+	engine.Use(middleware.Metrics())
 
 	if err := s.applyTrustedProxies(engine); err != nil {
 		return nil, err
@@ -251,6 +253,7 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 	}
 
 	s.registerHealthRoutes(engine, basePath)
+	s.registerMetricsRoute(engine, basePath)
 
 	g := engine.Group(basePath)
 

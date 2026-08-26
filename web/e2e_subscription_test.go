@@ -49,13 +49,10 @@ func (p *panel) getAnonymous(path string) *http.Response {
 	return resp
 }
 
-// seedSubscription 建一条 vmess 入站并挂一个客户端，返回它。
-func seedSubscription(t *testing.T, p *panel, port int) *model.Client {
+// lastInboundID 返回最近建出来的入站 id。
+func lastInboundID(t *testing.T, p *panel) int {
 	t.Helper()
 
-	if msg := p.decode(p.postForm("xui/inbound/add", inboundForm(port, "vmess", vmessSettings))); !msg.Success {
-		t.Fatalf("add inbound: %s", msg.Msg)
-	}
 	var inbounds []*model.Inbound
 	msg := p.decode(p.postForm("xui/inbound/list", nil))
 	if err := json.Unmarshal(msg.Obj, &inbounds); err != nil {
@@ -64,7 +61,17 @@ func seedSubscription(t *testing.T, p *panel, port int) *model.Client {
 	if len(inbounds) == 0 {
 		t.Fatal("the inbound list is empty right after a successful add")
 	}
-	return p.addClient(inbounds[len(inbounds)-1].Id, url.Values{
+	return inbounds[len(inbounds)-1].Id
+}
+
+// seedSubscription 建一条 vmess 入站并挂一个客户端，返回它。
+func seedSubscription(t *testing.T, p *panel, port int) *model.Client {
+	t.Helper()
+
+	if msg := p.decode(p.postForm("xui/inbound/add", inboundForm(port, "vmess", vmessSettings))); !msg.Success {
+		t.Fatalf("add inbound: %s", msg.Msg)
+	}
+	return p.addClient(lastInboundID(t, p), url.Values{
 		"email":  {"sub-" + strconv.Itoa(port) + "@example.com"},
 		"enable": {"true"},
 		"uuid":   {"11111111-1111-1111-1111-111111111111"},
