@@ -5,7 +5,8 @@
 //
 // 两条硬约束：
 //   - 数据库永远落在 t.TempDir()，绝不触碰 /etc/x-ui；
-//   - 不需要 sing-box 二进制。cron 建了但不 Start，定时任务不会真的去拉内核。
+//   - 不需要 sing-box 二进制。cron 默认只建不 Start；只有专门覆盖后台任务的
+//     用例才通过 startCron 启动它。
 package web
 
 import (
@@ -193,6 +194,24 @@ func newPanel(t *testing.T, opts ...panelOption) *panel {
 			},
 		},
 	}
+}
+
+// startCron 启动 initRouter 注册的后台任务，并在清理时等待在途任务结束。
+//
+// 常规 HTTP 用例不需要定时任务；并发用例显式调用这个 helper，才能覆盖生产中
+// cron 与请求处理器同时访问控制器状态的路径。
+func (p *panel) startCron() {
+	p.t.Helper()
+
+	p.server.cron.Start()
+	p.t.Cleanup(func() {
+		stopped := p.server.cron.Stop()
+		select {
+		case <-stopped.Done():
+		case <-time.After(cronDrainTimeout):
+			p.t.Errorf("test cron did not stop within %s", cronDrainTimeout)
+		}
+	})
 }
 
 // url 把面板内路径（相对 basePath）拼成绝对地址。"/healthz" 这类根路径原样使用。

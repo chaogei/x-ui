@@ -78,6 +78,86 @@ type stressResult struct {
 	err    error
 }
 
+// Production refreshes ServerController's cached status from cron while the
+// status page polls the same controller. The default harness leaves cron
+// stopped, so this test starts it explicitly and keeps requests in flight until
+// a refreshed (non-null) snapshot has travelled through the HTTP endpoint.
+func TestE2EStatusPollingConcurrentWithCronRefresh(t *testing.T) {
+	p := newPanel(t)
+	p.login()
+	token := p.csrfToken()
+	p.startCron()
+
+	const workers = 4
+	stop := make(chan struct{})
+	refreshed := make(chan struct{}, 1)
+	pollErr := make(chan error, workers)
+	done := make(chan int, workers)
+
+	for i := 0; i < workers; i++ {
+		go func(worker int) {
+			requests := 0
+			defer func() { done <- requests }()
+
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+
+				status, msg, err := stressPost(
+					p.client,
+					p.url("server/status"),
+					token,
+					nil,
+				)
+				if err != nil {
+					pollErr <- fmt.Errorf("worker %d: %w", worker, err)
+					return
+				}
+				if status != http.StatusOK || !msg.Success {
+					pollErr <- fmt.Errorf(
+						"worker %d: status endpoint returned HTTP %d, success=%v (%s)",
+						worker, status, msg.Success, msg.Msg,
+					)
+					return
+				}
+				requests++
+
+				if string(msg.Obj) != "null" {
+					select {
+					case refreshed <- struct{}{}:
+					default:
+					}
+				}
+				time.Sleep(5 * time.Millisecond)
+			}
+		}(i)
+	}
+
+	timer := time.NewTimer(5 * time.Second)
+	defer timer.Stop()
+
+	var err error
+	select {
+	case <-refreshed:
+	case err = <-pollErr:
+	case <-timer.C:
+		err = fmt.Errorf("cron did not publish a server status snapshot within 5s")
+	}
+	close(stop)
+
+	for i := 0; i < workers; i++ {
+		if requests := <-done; requests == 0 {
+			t.Errorf("worker %d completed no status polls", i)
+		}
+	}
+	if err != nil {
+		t.Fatal(err)
+	}
+}
+
 // Every worker forges a different forwarding chain, but httptest connects
 // directly from one untrusted peer. All failures must therefore land in one
 // limiter bucket even when RecordFail is hit concurrently.
