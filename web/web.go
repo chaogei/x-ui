@@ -228,6 +228,9 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 			c.Header("Cache-Control", "max-age=31536000")
 		}
 	})
+	// 只压 assets/：那里的字节与请求无关，压缩率不会泄漏任何东西。
+	// 页面和 API 响应里既有 CSRF token 又有请求方能影响的内容，不压。
+	engine.Use(middleware.CompressStatic(assetsBasePath))
 	if err := s.initI18n(engine); err != nil {
 		return nil, err
 	}
