@@ -82,7 +82,9 @@ process.stdout.write(
     mounted: Boolean(app && app.children.length > 0),
     text: (app?.textContent ?? "").replace(/\s+/g, " ").trim(),
     inputs: doc.querySelectorAll("#app input").length,
-    buttons: doc.querySelectorAll("#app button").length,
+    // 可交互控件不止 <button>：侧边栏是 role=menuitem，表格操作列是 <a>。
+    // 只数 button 会把"页面其实是活的"误判成死页。
+    actionable: doc.querySelectorAll("#app button, #app a, #app [role='menuitem']").length,
     errors,
   }) + "\n",
 );

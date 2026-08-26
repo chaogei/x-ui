@@ -29,12 +29,13 @@ import (
 
 // renderResult 是 scripts/render-smoke.mjs 的输出。
 type renderResult struct {
-	Page    string   `json:"page"`
-	Mounted bool     `json:"mounted"`
-	Text    string   `json:"text"`
-	Inputs  int      `json:"inputs"`
-	Buttons int      `json:"buttons"`
-	Errors  []string `json:"errors"`
+	Page    string `json:"page"`
+	Mounted bool   `json:"mounted"`
+	Text    string `json:"text"`
+	Inputs  int    `json:"inputs"`
+	// Actionable 是页面上可点的东西：按钮、链接、菜单项。
+	Actionable int      `json:"actionable"`
+	Errors     []string `json:"errors"`
 }
 
 func TestE2EFrontendBundleRendersEveryPage(t *testing.T) {
@@ -115,8 +116,8 @@ func TestE2EFrontendBundleRendersEveryPage(t *testing.T) {
 			if res.Inputs < tc.minInputs {
 				t.Errorf("rendered %s has %d input elements, want at least %d", tc.name, res.Inputs, tc.minInputs)
 			}
-			if res.Buttons == 0 {
-				t.Errorf("rendered %s has no buttons — nothing on the page is actionable", tc.name)
+			if res.Actionable == 0 {
+				t.Errorf("rendered %s has no buttons, links or menu items — the page is inert", tc.name)
 			}
 		})
 	}

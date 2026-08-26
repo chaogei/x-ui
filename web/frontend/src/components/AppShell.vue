@@ -10,7 +10,6 @@ import {
   GithubOutlined,
   GlobalOutlined,
   LogoutOutlined,
-  MenuFoldOutlined,
   SettingOutlined,
   UserOutlined,
 } from '@ant-design/icons-vue'
@@ -19,14 +18,12 @@ import { computed, ref } from 'vue'
 import { boot, panelUrl, setLang, t } from '../boot'
 
 const collapsed = ref(false)
-const drawerOpen = ref(false)
 
 const selectedKeys = computed(() => [boot.requestUri])
 
 const LANG_PREFIX = 'lang:'
 
 function handleClick(key: string): void {
-  drawerOpen.value = false
   if (key.startsWith(LANG_PREFIX)) {
     setLang(key.slice(LANG_PREFIX.length))
   } else if (key.startsWith('http')) {
@@ -39,6 +36,10 @@ function handleClick(key: string): void {
 
 <template>
   <a-layout style="min-height: 100%">
+    <!--
+      breakpoint="md" + collapsed-width="0"：窄屏自动收起，antd 会在边缘留一个
+      展开把手。菜单只此一份，语言切换在手机上同样可达。
+    -->
     <a-layout-sider v-model:collapsed="collapsed" collapsible breakpoint="md" :collapsed-width="0">
       <a-menu theme="dark" mode="inline" :selected-keys="selectedKeys" @click="(info: any) => handleClick(String(info.key))">
         <a-menu-item :key="panelUrl('xui/')">
@@ -73,34 +74,8 @@ function handleClick(key: string): void {
 
     <a-layout>
       <a-layout-content class="xui-content">
-        <a-button class="xui-drawer-handle" type="text" @click="drawerOpen = true">
-          <MenuFoldOutlined />
-        </a-button>
         <slot />
       </a-layout-content>
     </a-layout>
-
-    <a-drawer v-model:open="drawerOpen" placement="left" :closable="false" :body-style="{ padding: 0 }" width="220">
-      <a-menu theme="light" mode="inline" :selected-keys="selectedKeys" @click="(info: any) => handleClick(String(info.key))">
-        <a-menu-item :key="panelUrl('xui/')">{{ t('menu_system_status') }}</a-menu-item>
-        <a-menu-item :key="panelUrl('xui/inbounds')">{{ t('menu_inbound_list') }}</a-menu-item>
-        <a-menu-item :key="panelUrl('xui/setting')">{{ t('menu_panel_setting') }}</a-menu-item>
-        <a-menu-item :key="panelUrl('logout')">{{ t('logout') }}</a-menu-item>
-      </a-menu>
-    </a-drawer>
   </a-layout>
 </template>
-
-<style scoped>
-/* 侧边栏在窄屏被折叠成 0 宽，这个按钮是唯一的入口。 */
-.xui-drawer-handle {
-  display: none;
-  margin-bottom: 8px;
-}
-
-@media (max-width: 768px) {
-  .xui-drawer-handle {
-    display: inline-block;
-  }
-}
-</style>
