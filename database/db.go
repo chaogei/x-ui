@@ -3,8 +3,10 @@ package database
 import (
 	"fmt"
 	"io"
+	"net/url"
 	"os"
 	"path"
+	"time"
 
 	"x-ui/config"
 	"x-ui/database/model"
@@ -153,6 +155,61 @@ func initTwoFactor() error {
 	return db.AutoMigrate(&model.RecoveryCode{})
 }
 
+// sqliteDSN 把连接级 pragma 附加到数据库路径上。
+//
+// 默认（裸路径）打开的 SQLite 对这个面板来说有两个实打实的问题：
+//
+//   - rollback journal 模式下，写事务会阻塞所有读。流量任务每 10 秒写一次库，
+//     面板首页每 2 秒查一次状态，两者互相踩。WAL 让读写并行，写只与写互斥。
+//   - synchronous=FULL 让每个事务都 fsync 两次。写的是本地小表（几十行），
+//     WAL 下 NORMAL 的崩溃后果是"最后一个事务可能丢"——对一份 10 秒后
+//     会被下一批覆盖的流量增量来说，这个代价远低于每 10 秒两次 fsync。
+//
+// busy_timeout 与 _txlock 一起消除 SQLITE_BUSY：写事务一律以 BEGIN IMMEDIATE
+// 开始，锁竞争在开始时排队等待，而不是在中途升级锁时直接失败——后者是
+// busy_timeout 救不回来的那种失败。
+func sqliteDSN(dbPath string) string {
+	q := url.Values{}
+	q.Add("_pragma", "journal_mode(WAL)")
+	q.Add("_pragma", "busy_timeout(5000)")
+	q.Add("_pragma", "synchronous(NORMAL)")
+	q.Add("_pragma", "foreign_keys(1)")
+	q.Set("_txlock", "immediate")
+	return "file:" + dbPath + "?" + q.Encode()
+}
+
+// sqlite 连接池参数。
+//
+// 单文件数据库上开几十条连接毫无意义：写是串行的，读也只在 page cache 上。
+// 但把 idle 数压到 database/sql 的默认值 2 也不行——每建一条新连接都要重跑
+// 一遍 DSN 里的 pragma，等于把上面省下的开销又还回去。
+const (
+	dbMaxOpenConns = 8
+	dbMaxIdleConns = 8
+	dbConnMaxIdle  = 30 * time.Minute
+)
+
+// sidecarSuffixes 是 WAL 模式下与主库文件同目录的附属文件。
+// 它们承载尚未 checkpoint 的页面，内容敏感度与主库相同。
+var sidecarSuffixes = []string{"-wal", "-shm"}
+
+// restrictDBFilePerms 把主库与 WAL 附属文件收紧到 owner-only。
+func restrictDBFilePerms(dbPath string) {
+	for _, p := range append([]string{dbPath}, sidecarPaths(dbPath)...) {
+		if err := os.Chmod(p, 0o600); err != nil && !os.IsNotExist(err) {
+			xlogger.Warning("chmod db file failed:", err)
+		}
+	}
+}
+
+func sidecarPaths(dbPath string) []string {
+	paths := make([]string, 0, len(sidecarSuffixes))
+	for _, suffix := range sidecarSuffixes {
+		paths = append(paths, dbPath+suffix)
+	}
+	return paths
+}
+
 func InitDB(dbPath string) error {
 	dir := path.Dir(dbPath)
 	if err := os.MkdirAll(dir, dbDirPerm); err != nil {
@@ -171,15 +228,21 @@ func InitDB(dbPath string) error {
 		Logger: gormLogger,
 	}
 	var err error
-	db, err = gorm.Open(sqlite.Open(dbPath), c)
+	db, err = gorm.Open(sqlite.Open(sqliteDSN(dbPath)), c)
 	if err != nil {
 		return err
 	}
 
-	// 数据库文件含 bcrypt 哈希与 session secret，收紧到 owner-only。
-	if err := os.Chmod(dbPath, 0o600); err != nil && !os.IsNotExist(err) {
-		xlogger.Warning("chmod db file failed:", err)
+	sqlDB, err := db.DB()
+	if err != nil {
+		return err
 	}
+	sqlDB.SetMaxOpenConns(dbMaxOpenConns)
+	sqlDB.SetMaxIdleConns(dbMaxIdleConns)
+	sqlDB.SetConnMaxIdleTime(dbConnMaxIdle)
+
+	// 数据库文件含 bcrypt 哈希与 session secret，收紧到 owner-only。
+	restrictDBFilePerms(dbPath)
 
 	if err := initSetting(); err != nil {
 		return err
@@ -196,6 +259,10 @@ func InitDB(dbPath string) error {
 	if err := initTwoFactor(); err != nil {
 		return err
 	}
+
+	// 迁移期间的第一批写会建出 -wal/-shm。SQLite 让它们继承主库权限，
+	// 但那取决于 VFS 实现，再收一次紧不花钱。
+	restrictDBFilePerms(dbPath)
 
 	return nil
 }

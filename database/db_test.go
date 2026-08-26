@@ -2,6 +2,7 @@ package database
 
 import (
 	"bytes"
+	"net/url"
 	"os"
 	"path/filepath"
 	"regexp"
@@ -202,5 +203,76 @@ func TestSchemaIsCreated(t *testing.T) {
 		if !db.Migrator().HasTable(table) {
 			t.Errorf("table %q was not created", table)
 		}
+	}
+}
+
+// TestConnectionPragmas 锁住连接级 pragma。
+//
+// 这些不是调优旋钮而是正确性前提：没有 WAL，每 10 秒一次的流量写事务
+// 会把面板的所有读请求挡在门外；没有 busy_timeout，同一时刻的第二个写者
+// 直接拿到 SQLITE_BUSY 而不是排队。
+//
+// pragma 是 per-connection 的，所以要在池里的每条连接上都验一遍。
+func TestConnectionPragmas(t *testing.T) {
+	initTempDB(t)
+
+	want := map[string]string{
+		"journal_mode": "wal",
+		"busy_timeout": "5000",
+		"synchronous":  "1", // NORMAL
+		"foreign_keys": "1",
+	}
+	// 并行拿多条连接，确认 pragma 不是只在第一条上生效。
+	for i := 0; i < dbMaxOpenConns; i++ {
+		tx := db.Session(&gorm.Session{})
+		for pragma, expected := range want {
+			var got string
+			if err := tx.Raw("pragma " + pragma).Scan(&got).Error; err != nil {
+				t.Fatalf("read pragma %s: %v", pragma, err)
+			}
+			if !strings.EqualFold(got, expected) {
+				t.Errorf("pragma %s = %q, want %q", pragma, got, expected)
+			}
+		}
+	}
+}
+
+// TestSidecarFilePermissions 覆盖 WAL 引入的两个新文件。
+// -wal 里躺着还没 checkpoint 的页面，和主库一样含哈希与 secret。
+func TestSidecarFilePermissions(t *testing.T) {
+	dbPath, _ := initTempDB(t)
+
+	// 触发一次写，确保 -wal 已经落地。
+	if err := db.Exec("create table if not exists perm_probe(id integer)").Error; err != nil {
+		t.Fatalf("write probe: %v", err)
+	}
+
+	for _, p := range sidecarPaths(dbPath) {
+		info, err := os.Stat(p)
+		if os.IsNotExist(err) {
+			continue
+		}
+		if err != nil {
+			t.Fatalf("stat %s: %v", p, err)
+		}
+		if got := info.Mode().Perm(); got&0o077 != 0 {
+			t.Errorf("%s mode = %#o, want no group/other bits", p, got)
+		}
+	}
+}
+
+// TestSQLiteDSNIsParseable 防止有人手拼查询串时漏掉转义。
+func TestSQLiteDSNIsParseable(t *testing.T) {
+	dsn := sqliteDSN("/etc/x-ui/x-ui.db")
+	u, err := url.Parse(dsn)
+	if err != nil {
+		t.Fatalf("parse dsn %q: %v", dsn, err)
+	}
+	if u.Path != "/etc/x-ui/x-ui.db" {
+		t.Errorf("dsn path = %q, want the database path verbatim", u.Path)
+	}
+	pragmas := u.Query()["_pragma"]
+	if len(pragmas) < 4 {
+		t.Errorf("dsn carries %d pragmas, want the full set: %v", len(pragmas), pragmas)
 	}
 }
