@@ -9,7 +9,7 @@
  * 加载随机生成一段线性渐变，观感上每次都是另一个产品，文字对比度还得看运气。
  */
 import { LockOutlined, SafetyCertificateOutlined, UserOutlined } from '@ant-design/icons-vue'
-import { ref } from 'vue'
+import { computed, ref } from 'vue'
 
 import { boot, panelUrl, t } from '../boot'
 import { post } from '../http'
@@ -20,9 +20,16 @@ const twoFactorCode = ref('')
 /** 只有服务端明确说"需要验证码"之后才露出第二因素输入框。 */
 const needCode = ref(false)
 const loading = ref(false)
+const errorText = ref('')
+
+const canSubmit = computed(() => username.value.trim() !== '' && password.value !== '')
 
 async function login(): Promise<void> {
+  if (!canSubmit.value || loading.value) {
+    return
+  }
   loading.value = true
+  errorText.value = ''
   const msg = await post('login', {
     username: username.value.trim(),
     password: password.value,
@@ -33,6 +40,7 @@ async function login(): Promise<void> {
     location.href = panelUrl('xui/')
     return
   }
+  errorText.value = msg.msg || t('login_failed')
   // 两条提示都意味着"口令对了，缺的是第二因素"，此时把输入框展开。
   if (msg.msg === t('auth_totp_required') || msg.msg === t('auth_totp_invalid')) {
     needCode.value = true
@@ -53,13 +61,16 @@ async function login(): Promise<void> {
       </div>
 
       <a-form layout="vertical" @submit.prevent="login">
+        <p v-if="errorText" class="xui-login__error" role="alert">{{ errorText }}</p>
         <a-form-item>
           <a-input
             v-model:value="username"
             size="large"
+            name="username"
+            autocomplete="username"
             :placeholder="t('username')"
+            :aria-invalid="!!errorText"
             autofocus
-            @keydown.enter="login"
           >
             <template #prefix><UserOutlined /></template>
           </a-input>
@@ -68,8 +79,10 @@ async function login(): Promise<void> {
           <a-input-password
             v-model:value="password"
             size="large"
+            name="password"
+            autocomplete="current-password"
             :placeholder="t('password')"
-            @keydown.enter="login"
+            :aria-invalid="!!errorText"
           >
             <template #prefix><LockOutlined /></template>
           </a-input-password>
@@ -78,15 +91,23 @@ async function login(): Promise<void> {
           <a-input
             v-model:value="twoFactorCode"
             size="large"
-            :placeholder="t('login_totp_code')"
+            inputmode="numeric"
             autocomplete="one-time-code"
-            @keydown.enter="login"
+            :placeholder="t('login_totp_code')"
+            :aria-invalid="!!errorText"
           >
             <template #prefix><SafetyCertificateOutlined /></template>
           </a-input>
         </a-form-item>
         <a-form-item style="margin-bottom: 12px">
-          <a-button type="primary" size="large" block :loading="loading" @click="login">
+          <a-button
+            type="primary"
+            size="large"
+            block
+            html-type="submit"
+            :loading="loading"
+            :disabled="!canSubmit"
+          >
             {{ t('login') }}
           </a-button>
         </a-form-item>

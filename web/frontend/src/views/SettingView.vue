@@ -12,9 +12,11 @@ import { post, sleep } from '../http'
 import { defaultAllSetting, fromServer, settingsEqual, type AllSetting } from '../models/setting'
 
 const spinning = ref(false)
+const restarting = ref(false)
 const saved = ref<AllSetting>(defaultAllSetting())
 const draft = ref<AllSetting>(defaultAllSetting())
 const activeTab = ref('panel')
+const loadError = ref('')
 
 const user = ref({ oldUsername: '', oldPassword: '', newUsername: '', newPassword: '' })
 
@@ -22,12 +24,15 @@ const dirty = computed(() => !settingsEqual(saved.value, draft.value))
 
 async function load(): Promise<void> {
   spinning.value = true
+  loadError.value = ''
   const msg = await post<Partial<AllSetting>>('xui/setting/all', undefined, true)
   spinning.value = false
-  if (msg.success) {
-    saved.value = fromServer(msg.obj)
-    draft.value = fromServer(msg.obj)
+  if (!msg.success) {
+    loadError.value = msg.msg || t('load_failed')
+    return
   }
+  saved.value = fromServer(msg.obj)
+  draft.value = fromServer(msg.obj)
 }
 
 async function save(): Promise<void> {
@@ -48,30 +53,68 @@ async function updateUser(): Promise<void> {
   }
 }
 
-function restartPanel(): void {
+function changeTab(key: string | number): void {
+  const next = String(key)
+  if (next === activeTab.value) {
+    return
+  }
+  if (!dirty.value) {
+    activeTab.value = next
+    return
+  }
   Modal.confirm({
-    title: t('restart_panel'),
-    content: t('confirm_restart_content'),
+    title: t('unsaved_changes'),
+    content: t('unsaved_changes_hint'),
     okText: t('confirm'),
     cancelText: t('cancel'),
-    onOk: async () => {
-      spinning.value = true
-      const msg = await post('xui/setting/restartPanel')
-      if (msg.success) {
-        // 面板正在重新监听端口，等它起来再刷新，否则会撞上一个连接错误页。
-        await sleep(5000)
-        location.reload()
-      }
-      spinning.value = false
+    onOk: () => {
+      activeTab.value = next
     },
   })
+}
+
+function restartPanel(): void {
+  const run = async () => {
+    spinning.value = true
+    restarting.value = true
+    const msg = await post('xui/setting/restartPanel')
+    if (msg.success) {
+      // 面板正在重新监听端口，等它起来再刷新，否则会撞上一个连接错误页。
+      await sleep(5000)
+      location.reload()
+    }
+    restarting.value = false
+    spinning.value = false
+  }
+
+  const proceed = () => {
+    Modal.confirm({
+      title: t('restart_panel'),
+      content: t('confirm_restart_content'),
+      okText: t('confirm'),
+      cancelText: t('cancel'),
+      onOk: run,
+    })
+  }
+
+  if (dirty.value) {
+    Modal.confirm({
+      title: t('unsaved_changes'),
+      content: t('unsaved_changes_hint'),
+      okText: t('confirm'),
+      cancelText: t('cancel'),
+      onOk: proceed,
+    })
+    return
+  }
+  proceed()
 }
 
 onMounted(load)
 </script>
 
 <template>
-  <a-spin :spinning="spinning">
+  <a-spin :spinning="spinning" :tip="restarting ? t('restarting_panel') : undefined">
     <div class="xui-toolbar xui-glass">
       <h2 class="xui-toolbar__title">{{ t('menu_panel_setting') }}</h2>
       <span class="xui-toolbar__spacer" />
@@ -79,7 +122,19 @@ onMounted(load)
       <a-button danger :disabled="dirty" @click="restartPanel">{{ t('restart_panel') }}</a-button>
     </div>
 
-    <a-tabs v-model:activeKey="activeTab" type="card">
+    <a-alert
+      v-if="loadError"
+      type="error"
+      show-icon
+      style="margin-bottom: 18px"
+      :message="loadError"
+    >
+      <template #action>
+        <a-button size="small" @click="load">{{ t('action_retry') }}</a-button>
+      </template>
+    </a-alert>
+
+    <a-tabs :active-key="activeTab" type="card" @change="changeTab">
       <a-tab-pane key="panel" :tab="t('tab_panel')">
         <a-list class="xui-panel xui-glass" item-layout="horizontal">
           <SettingListItem
@@ -126,16 +181,16 @@ onMounted(load)
           <a-card :title="t('tab_user')">
             <a-form layout="vertical" style="max-width: 360px">
               <a-form-item :label="t('setting_old_username')">
-                <a-input v-model:value="user.oldUsername" />
+                <a-input v-model:value="user.oldUsername" autocomplete="username" />
               </a-form-item>
               <a-form-item :label="t('setting_old_password')">
-                <a-input-password v-model:value="user.oldPassword" />
+                <a-input-password v-model:value="user.oldPassword" autocomplete="current-password" />
               </a-form-item>
               <a-form-item :label="t('setting_new_username')">
-                <a-input v-model:value="user.newUsername" />
+                <a-input v-model:value="user.newUsername" autocomplete="username" />
               </a-form-item>
               <a-form-item :label="t('setting_new_password')">
-                <a-input-password v-model:value="user.newPassword" />
+                <a-input-password v-model:value="user.newPassword" autocomplete="new-password" />
               </a-form-item>
               <a-form-item>
                 <a-button type="primary" @click="updateUser">{{ t('edit') }}</a-button>

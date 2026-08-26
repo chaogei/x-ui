@@ -311,3 +311,18 @@
 "twofa_disable" = "關閉"
 "twofa_disable_hint" = "關閉兩步驗證需要同時提供密碼和一個目前的驗證碼。"
 "twofa_recovery_once" = "請立刻保存這些救援碼——每張只能用一次，且不會再次顯示。"
+
+# ------- UI 交互打磨 -------
+"menu_close" = "關閉選單"
+"login_failed" = "登入失敗，請檢查使用者名稱和密碼。"
+"load_failed" = "頁面載入失敗，請重試。"
+"action_retry" = "重試"
+"inbound_filter_ph" = "依備註、連接埠或協定篩選"
+"inbound_filter_empty" = "沒有符合篩選條件的入站"
+"unsaved_changes" = "有未儲存的變更"
+"unsaved_changes_hint" = "目前頁面還有沒儲存的修改，確定要離開嗎？"
+"restarting_panel" = "正在重新啟動面板…"
+"confirm_install_core" = "切換核心會短暫停掉正在執行的核心。確定繼續？"
+"client_empty" = "這個入站還沒有用戶端"
+"client_empty_hint" = "新增一個用戶端即可發放憑證與訂閱連結。"
+"status_loading" = "正在載入狀態…"

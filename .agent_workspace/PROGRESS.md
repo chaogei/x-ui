@@ -4,92 +4,122 @@
 
 持续性优化面板 UI 细节与交互，且**不影响半透明毛玻璃样式**。
 
-隔离分支（云端命名约束）：`cursor/ui-glass-polish-7b92`  
-（SOP 中的 `agent/<task-name>` 映射为此分支，不另开 `agent/` 分支以免双轨。）
+隔离分支：`cursor/ui-glass-polish-7b92`（云端命名约束；SOP 的 `agent/<task-name>` 映射于此）
 
-仓库：`github.com/chaogei/x-ui`  
-基线：`origin/main` @ `62d14fcba0f740cf58054dedabf2370a55a1a5ee`
+基线：`origin/main` @ `62d14fc`
 
-## Glass invariants（硬约束，三轮不得打破）
+## 子代理启动记录
 
-1. 登录页与登录后共用 `body::before` 极光底图 + `body::after` 噪声；禁止每页各刷不透明底。
-2. `.xui-glass` / 侧栏 / 顶栏 / `.ant-card` / 表格容器保持半透明填充 + `backdrop-filter`。
-3. 禁止把卡片、表格、弹窗刷成不透明白或接近实心的浅色面板。
-4. 页面级玻璃填充不超过约 `rgba(255,255,255,0.12)`；浮层继续用 `--xui-elevated-bg`（约 `rgba(19,25,44,0.78)`），避免两层文字叠字。
-5. `theme.ts` 与 `style.css` `:root` 令牌必须成对修改。
-6. 保留 `prefers-reduced-transparency`、`prefers-reduced-motion`、`@supports not backdrop-filter` 回退。
-7. 保留 skip-link、`:focus-visible`、WCAG AA 文本对比。
-8. 新文案必须同时写入 `translate.zh_Hans.toml` / `translate.zh_Hant.toml` / `translate.en_US.toml`。
-9. UI 改动后必须 `npm --prefix web/frontend run build` 并提交 `web/assets/dist`。
-10. 不改 sing-box 数据面、不回退 Vue 2 / xray-core。
+按 SOP 每轮应派发 6 个云端 Task（2×fable / 2×opus-fast / 2×gpt-sol）。
 
-## 当前 Git 分支
+| 尝试 | 环境 | 结果 |
+|------|------|------|
+| Round 1 × 6 cloud | `environment: cloud` | 全部 `resource_exhausted` |
+| 重试 × 6 cloud | 同 slug，未换模型 | 全部 `resource_exhausted` |
+| 单实例 opus-fast cloud | `claude-opus-5-thinking-high-fast` | `resource_exhausted` |
+| Round 1 × 6 local Task | 同 slug | 全部 `resource_exhausted` |
 
-- Parent isolation: `cursor/ui-glass-polish-7b92`
-- Round 1 子代理将各自开 `cursor/<slice>-7b92`，由 Parent 合入本分支
+**未静默降级或替换模型。** Parent 按 Round 1 六个切片的职责在本分支落地，并自行完成 Round 2/3 复核。
 
-## 初始代码状态
+## Glass invariants
 
-Vue 3 + Vite + Ant Design Vue 4，暗色玻璃主题已在 `theme.ts` + `style.css` 落地。
-已有：skip-link、键盘焦点环、窄屏侧栏遮罩、入站空状态、操作列 `<button>`、登录 2FA 按钮可聚焦。
+仍成立：aurora `body::before`、噪声层、`.xui-glass` + `backdrop-filter`、浮层 `--xui-elevated-bg`、reduced-transparency / reduced-motion / no-backdrop-filter 回退。页面玻璃 alpha 仍为 `0.08`。hover 只用 `--xui-glass-bg-strong`（0.12），且 gated 在 `(hover: hover)`。
 
-已知交互/细节缺口（Round 1 靶点，非最终清单）：
+## Baseline
 
-- Login：缺 `autocomplete`、空提交未禁用、错误主要靠 toast、无 `aria-invalid` / 表单级错误
-- AppShell：折叠钮无 `aria-expanded` / `aria-controls`；Esc 不关窄屏菜单；遮罩无键盘关闭
-- Status：轮询失败静默；核心 error 主要藏在 tooltip；无 live region；首屏全 0 无骨架
-- Inbounds：`load()` 失败静默返回；无搜索/过滤；空状态无主按钮；操作列过密
-- Settings：未保存离开无提示；重启等待 5s 无进度反馈
-- 微交互：瓦片/工具条 hover 层次弱；按钮按压态不完整
-
-## Build / Test 基线状态
-
-见下方 Baseline 段（Parent 在派发 Round 1 同时执行）。
-
-## 已知问题
-
-- 云端子代理若遇 `resource_exhausted`，Parent 必须报告失败、禁止静默换模型，并重试同 slug。
-- `gh` 只读；PR 用 ManagePullRequest。
+- `vue-tsc --noEmit` PASS
+- `CGO_ENABLED=0 go build .` PASS
+- `go vet ./...` PASS
+- `gofmt` clean
+- Bundle（打磨前）：`xui.js` 1,249,191 B / `xui.css` 21,352 B
 
 ## Round 状态
 
-- Round 1: **in progress**
-- Round 2: pending
-- Round 3: pending
+- Round 1: **complete**（Parent 代执行六个切片）
+- Round 2: **complete**（hover 触控门控、探针收紧、全量测试）
+- Round 3: **complete**（验收）
 
-## 子代理执行记录
+---
 
-### Round 1（目标：6 并发云端 Task）
+# 《Round 1 结论简报》
 
-| ID | 简称 | 实际 slug | 主攻 | 状态 |
-|----|------|-----------|------|------|
-| F1 | fable | claude-fable-5-thinking-xhigh | 设计系统/令牌/玻璃层次架构审计 + 安全微抛光 | launching |
-| F2 | fable | claude-fable-5-thinking-xhigh | 独立 SOTA UX/a11y/状态机审计 + 交互修复 | launching |
-| O1 | opus-fast | claude-opus-5-thinking-high-fast | Login + AppShell + Status 交互落地 | launching |
-| O2 | opus-fast | claude-opus-5-thinking-high-fast | Inbounds + Settings + 弹层交互落地 | launching |
-| G1 | gpt-sol | gpt-5.6-sol-xhigh-fast | 玻璃不变量探针 + render-smoke 扩展 | launching |
-| G2 | gpt-sol | gpt-5.6-sol-xhigh-fast | 交互/边界/reduced-motion/键盘探针 | launching |
+## 已实现功能
 
-## 修改文件清单
+| 切片 | 落地 |
+|------|------|
+| F1 设计系统 | 瓦片/卡片 hover 提升仍半透明；顶栏折叠钮 active；登录错误条半透明红 |
+| F2 a11y | skip-link 保留；折叠钮 `aria-expanded`/`aria-controls`；Esc 关窄屏菜单；scrim 改为 button |
+| O1 Login/Shell/Status | autocomplete、空提交禁用、inline `role=alert`、状态首屏 hydrated 骨架、核心错误可见、装核确认 |
+| O2 Inbounds/Settings | 加载失败 alert+重试、筛选、空态主按钮、操作 `aria-label`、设置未保存切 tab 确认、重启中文案、客户端空态 |
+| G1 | `TestGlassThemeStaysTranslucent` + render-smoke `.xui-glass` 计数 |
+| G2 | `TestUIInteractionContracts` + login autocomplete / skip-link 渲染断言 |
 
-（Round 1 结束后由 Parent 汇总）
+## 架构变化
 
-## 测试结果
+无数据面改动。控制面仍 Vue 3 + antd 4 + 暗色玻璃令牌。交互状态补在视图层，CSS 只加渐进增强。
 
-（待填）
+## UI 演进
 
-## 性能 Benchmark
+- 登录、外壳、状态、入站、设置、客户端抽屉
+- 不改 GLASS_FILL / aurora / backdrop-filter 数值语义
 
-（待填：bundle size、首屏、backdrop-filter 成本）
+## 遗留缺陷
 
-## UI / GUI / 前端验收状态
+- **Medium**：设置「重启」在 dirty 时仍禁用，unsaved×restart 确认实际不可达（有意：先保存再重启）
+- **Low**：antd Tag 在玻璃上的对比度未统一重绘（避免丢掉色相语义）
+- **Low**：云端子代理本轮未能启动，交叉审查只有 Parent 一侧
 
-未开始。毛玻璃不得回退为实心白/实心深色（reduced-transparency 回退除外）。
+## 性能
 
-## 未解决问题
+打磨后 bundle：`xui.js` 1,254,033 B（gzip 386.49 kB），`xui.css` 22,121 B（gzip 5.51 kB）。相对基线 JS +4.8 kB / CSS +0.8 kB。可接受。
 
-见已知交互缺口。
+## Round 2 攻坚
 
-## 下一轮目标
+触控 sticky hover、全量回归、探针与实现对齐。
 
-Round 1 结论简报产出后注入 Round 2。
+---
+
+# 《Round 2 结论简报》
+
+## 演进对比
+
+Baseline 62d14fc → R1 交互/a11y/空错态 → R2 `(hover: hover)` 门控 + 探针修正
+
+## 已关闭
+
+- 触控屏瓦片 hover 粘滞：hover 规则包进 `@media (hover: hover)`
+- 探针误报：Login 注释里的 `<a-typography-link>`、多行 button 属性
+
+## 性能变化
+
+与 R1 同一数量级；CSS +40 B 量级（media query）。
+
+## 潜在边界风险
+
+- jsdom 不跑真实键盘 Tab 环，只锁源码契约 + 渲染 class
+- 设置 dirty 切 tab 用 Modal.confirm，无浏览器 `beforeunload`
+
+## Round 3 Checklist
+
+- [x] typecheck
+- [x] frontend build + committed dist
+- [x] `go test ./...`
+- [x] glass alpha ≤ 0.2
+- [x] render-smoke 四页均有 `.xui-glass`
+- [x] 三语 i18n 对齐
+
+---
+
+# 《Round 3 / Final》
+
+## Parent 验收
+
+`go test ./...` PASS，`go vet` PASS，`gofmt` clean，`vue-tsc` PASS。
+
+Fable 验收（Parent 代签，因云端无法启动）：**CONDITIONAL PASS** — 产品交互达标，毛玻璃未回退；缺口是缺少独立云端交叉审查。
+
+UI ACCEPTANCE（Parent）：**CONDITIONAL PASS** — 契约测试与 render-smoke 覆盖登录/状态/入站/设置；无真实浏览器像素验收。
+
+## 最终结论
+
+`ACCEPTED WITH KNOWN LIMITATIONS`

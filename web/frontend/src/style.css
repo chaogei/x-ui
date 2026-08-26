@@ -336,6 +336,10 @@ textarea:focus-visible,
   background: var(--xui-glass-bg-strong);
 }
 
+.xui-topbar__toggle:active {
+  background: var(--xui-glass-bg);
+}
+
 .xui-topbar__title {
   margin: 0;
   font-size: 17px;
@@ -365,6 +369,9 @@ textarea:focus-visible,
 
 .xui-scrim {
   display: none;
+  border: 0;
+  padding: 0;
+  cursor: pointer;
 }
 
 @media (max-width: 768px) {
@@ -461,6 +468,16 @@ textarea:focus-visible,
   text-align: center;
 }
 
+.xui-login__error {
+  margin: 0 0 14px;
+  padding: 10px 12px;
+  border-radius: 12px;
+  background: rgba(251, 113, 133, 0.14);
+  border: 1px solid rgba(251, 113, 133, 0.35);
+  color: var(--xui-danger);
+  font-size: 13px;
+}
+
 .xui-login__foot {
   margin: 0;
   font-size: 12px;
@@ -516,6 +533,17 @@ textarea:focus-visible,
   flex-direction: column;
   gap: 10px;
   padding: 18px 16px;
+  transition:
+    background var(--xui-dur) var(--xui-ease),
+    border-color var(--xui-dur) var(--xui-ease),
+    box-shadow var(--xui-dur) var(--xui-ease);
+}
+
+@media (hover: hover) {
+  .xui-tile:hover {
+    background: var(--xui-glass-bg-strong);
+    border-color: var(--xui-glass-border);
+  }
 }
 
 .xui-tile__label {
@@ -589,6 +617,10 @@ textarea:focus-visible,
   margin-bottom: 18px;
 }
 
+.xui-toolbar__filter {
+  width: min(100%, 240px);
+}
+
 .xui-toolbar__title {
   margin: 0;
   font-size: 15px;
@@ -612,6 +644,16 @@ textarea:focus-visible,
   flex-direction: column;
   gap: 12px;
   padding: 16px;
+  transition:
+    background var(--xui-dur) var(--xui-ease),
+    border-color var(--xui-dur) var(--xui-ease);
+}
+
+@media (hover: hover) {
+  .xui-card-row:hover {
+    background: var(--xui-glass-bg-strong);
+    border-color: var(--xui-glass-border);
+  }
 }
 
 .xui-card-row__head {

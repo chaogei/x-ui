@@ -11,8 +11,8 @@ import {
   ArrowUpOutlined,
   CloudDownloadOutlined,
   CloudUploadOutlined,
-  QuestionCircleOutlined,
 } from '@ant-design/icons-vue'
+import { Modal } from 'ant-design-vue'
 import { computed, ref } from 'vue'
 
 import { t } from '../boot'
@@ -55,6 +55,7 @@ const status = ref<StatusPayload>({
 
 const spinning = ref(false)
 const loadingTip = ref('')
+const hydrated = ref(false)
 const versionOpen = ref(false)
 const versions = ref<string[]>([])
 
@@ -121,6 +122,7 @@ async function refresh(): Promise<boolean> {
     return false
   }
   status.value = msg.obj
+  hydrated.value = true
   return true
 }
 
@@ -137,18 +139,26 @@ async function openVersions(): Promise<void> {
 }
 
 async function switchVersion(version: string): Promise<void> {
-  versionOpen.value = false
-  spinning.value = true
-  loadingTip.value = t('installing_core_tip')
-  await post(`server/installCore/${version}`)
-  spinning.value = false
+  Modal.confirm({
+    title: t('switch_version'),
+    content: t('confirm_install_core'),
+    okText: t('confirm'),
+    cancelText: t('cancel'),
+    onOk: async () => {
+      versionOpen.value = false
+      spinning.value = true
+      loadingTip.value = t('installing_core_tip')
+      await post(`server/installCore/${version}`)
+      spinning.value = false
+    },
+  })
 }
 
 usePolling(refresh, { interval: 2000 })
 </script>
 
 <template>
-  <a-spin :spinning="spinning" :tip="loadingTip">
+  <a-spin :spinning="spinning || !hydrated" :tip="hydrated ? loadingTip : t('status_loading')">
     <div class="xui-stack">
       <section>
         <h2 class="xui-section-title">{{ t('system_status') }}</h2>
@@ -179,15 +189,10 @@ usePolling(refresh, { interval: 2000 })
           <article class="xui-tile xui-glass">
             <span class="xui-tile__label">{{ t('sing_box_status') }}</span>
             <div class="xui-tile__row">
-              <span :class="coreChipClass">{{ status.core.state }}</span>
-              <a-tooltip v-if="status.core.state === 'error'">
-                <template #title>
-                  <p v-for="(line, i) in (status.core.errorMsg || '').split('\n')" :key="i">{{ line }}</p>
-                </template>
-                <QuestionCircleOutlined />
-              </a-tooltip>
+              <span :class="coreChipClass" aria-live="polite">{{ status.core.state }}</span>
               <span v-if="status.core.version" class="xui-chip">{{ status.core.version }}</span>
             </div>
+            <p v-if="status.core.errorMsg" class="xui-tile__meta" role="alert">{{ status.core.errorMsg }}</p>
             <div class="xui-tile__row">
               <a-button size="small" @click="openVersions">{{ t('switch_version') }}</a-button>
             </div>

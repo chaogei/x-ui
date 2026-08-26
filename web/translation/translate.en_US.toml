@@ -311,3 +311,18 @@
 "twofa_disable" = "Turn off"
 "twofa_disable_hint" = "Turning two-factor off needs both your password and a current code."
 "twofa_recovery_once" = "Store these recovery codes now — each works once and they are never shown again."
+
+# ------- UI interaction polish -------
+"menu_close" = "Close menu"
+"login_failed" = "Sign-in failed. Check the username and password."
+"load_failed" = "Could not load this page. Try again."
+"action_retry" = "Retry"
+"inbound_filter_ph" = "Filter by remark, port or protocol"
+"inbound_filter_empty" = "No inbounds match this filter"
+"unsaved_changes" = "Unsaved changes"
+"unsaved_changes_hint" = "This tab has edits that have not been saved. Continue anyway?"
+"restarting_panel" = "Restarting the panel…"
+"confirm_install_core" = "Installing a kernel version stops the running core for a moment. Continue?"
+"client_empty" = "No clients on this inbound yet"
+"client_empty_hint" = "Add a client to issue credentials and a subscription URL."
+"status_loading" = "Loading status…"

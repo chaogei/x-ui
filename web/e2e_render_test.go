@@ -34,8 +34,13 @@ type renderResult struct {
 	Text    string `json:"text"`
 	Inputs  int    `json:"inputs"`
 	// Actionable 是页面上可点的东西：按钮、链接、菜单项。
-	Actionable int      `json:"actionable"`
-	Errors     []string `json:"errors"`
+	Actionable       int      `json:"actionable"`
+	Glass            int      `json:"glass"`
+	LoginMain        bool     `json:"loginMain"`
+	Skip             bool     `json:"skip"`
+	LinkButtons      int      `json:"linkButtons"`
+	AutocompleteUser bool     `json:"autocompleteUser"`
+	Errors           []string `json:"errors"`
 }
 
 func TestE2EFrontendBundleRendersEveryPage(t *testing.T) {
@@ -118,6 +123,22 @@ func TestE2EFrontendBundleRendersEveryPage(t *testing.T) {
 			}
 			if res.Actionable == 0 {
 				t.Errorf("rendered %s has no buttons, links or menu items — the page is inert", tc.name)
+			}
+			if res.Glass == 0 {
+				t.Errorf("rendered %s has no .xui-glass surfaces — the frosted panel did not mount", tc.name)
+			}
+			if tc.page == "login" {
+				if !res.LoginMain {
+					t.Error("login page is missing <main class=\"xui-login\">")
+				}
+				if res.Skip {
+					t.Error("login page should not render the authenticated skip-link")
+				}
+				if !res.AutocompleteUser {
+					t.Error("login username field is missing autocomplete=username")
+				}
+			} else if !res.Skip {
+				t.Errorf("rendered %s is missing the skip-to-content link", tc.name)
 			}
 		})
 	}

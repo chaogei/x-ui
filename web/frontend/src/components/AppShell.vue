@@ -15,11 +15,12 @@ import {
   SettingOutlined,
   UserOutlined,
 } from '@ant-design/icons-vue'
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
 import { boot, panelUrl, setLang, t } from '../boot'
 
 const collapsed = ref(false)
+const narrow = ref(false)
 
 const selectedKeys = computed(() => [boot.requestUri])
 
@@ -39,8 +40,25 @@ const LANG_PREFIX = 'lang:'
 
 /** 跳转链接的落点。id 写死即可：一个页面只有一个内容区。 */
 const CONTENT_ID = 'xui-content'
+const SIDER_ID = 'xui-sider-nav'
+const NARROW_QUERY = '(max-width: 768px)'
+
+let mediaQuery: MediaQueryList | undefined
+
+function onNarrowChange(e: MediaQueryListEvent | MediaQueryList): void {
+  narrow.value = e.matches
+}
+
+function onKeydown(e: KeyboardEvent): void {
+  if (e.key === 'Escape' && !collapsed.value && narrow.value) {
+    collapsed.value = true
+  }
+}
 
 function handleClick(key: string): void {
+  if (narrow.value) {
+    collapsed.value = true
+  }
   if (key.startsWith(LANG_PREFIX)) {
     setLang(key.slice(LANG_PREFIX.length))
   } else if (key.startsWith('http')) {
@@ -49,6 +67,21 @@ function handleClick(key: string): void {
     location.href = key
   }
 }
+
+onMounted(() => {
+  mediaQuery = window.matchMedia?.(NARROW_QUERY)
+  if (mediaQuery) {
+    narrow.value = mediaQuery.matches
+    mediaQuery.addEventListener('change', onNarrowChange)
+  }
+  window.addEventListener('keydown', onKeydown)
+})
+
+onBeforeUnmount(() => {
+  mediaQuery?.removeEventListener('change', onNarrowChange)
+  mediaQuery = undefined
+  window.removeEventListener('keydown', onKeydown)
+})
 </script>
 
 <template>
@@ -78,7 +111,7 @@ function handleClick(key: string): void {
         "游离在地标之外的内容"；而给 <aside> 加 role=navigation 又是一个不被
         允许的角色组合。
       -->
-      <div class="xui-sider__inner" role="navigation">
+      <div :id="SIDER_ID" class="xui-sider__inner" role="navigation">
         <a class="xui-brand" :href="panelUrl('xui/')">
           <span class="xui-brand__mark" aria-hidden="true">x</span>
           <span class="xui-brand__text">
@@ -125,7 +158,13 @@ function handleClick(key: string): void {
     </a-layout-sider>
 
     <!-- 窄屏侧边栏浮在内容之上，点遮罩收回去。宽屏由 CSS 隐藏。 -->
-    <div v-if="!collapsed" class="xui-scrim" @click="collapsed = true" />
+    <button
+      v-if="!collapsed && narrow"
+      type="button"
+      class="xui-scrim"
+      :aria-label="t('menu_close')"
+      @click="collapsed = true"
+    />
 
     <a-layout class="xui-main">
       <!-- 同理：<section> 里的 <header> 也拿不到 banner 地标，标题会落在地标外。 -->
@@ -134,6 +173,8 @@ function handleClick(key: string): void {
           class="xui-topbar__toggle"
           type="button"
           :aria-label="t('menu_toggle')"
+          :aria-expanded="!collapsed"
+          :aria-controls="SIDER_ID"
           :title="t('menu_toggle')"
           @click="collapsed = !collapsed"
         >

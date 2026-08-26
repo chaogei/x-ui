@@ -31,6 +31,7 @@ const emit = defineEmits<{
 
 const clients = ref<Client[]>([])
 const loading = ref(false)
+const loadError = ref('')
 
 const editorOpen = ref(false)
 const editing = ref<Client>(emptyClient(0))
@@ -74,9 +75,15 @@ async function load(): Promise<void> {
     return
   }
   loading.value = true
+  loadError.value = ''
   const msg = await post<Client[]>(`xui/client/list/${props.inboundId}`, undefined, true)
   loading.value = false
-  clients.value = msg.success ? (msg.obj ?? []) : []
+  if (!msg.success) {
+    loadError.value = msg.msg || t('load_failed')
+    clients.value = []
+    return
+  }
+  clients.value = msg.obj ?? []
 }
 
 watch(
@@ -194,6 +201,11 @@ const columns = computed(() => [
       </a-space>
       <a-alert type="info" show-icon :message="t('client_traffic_note')" style="margin-bottom: 12px" />
 
+      <a-alert v-if="loadError" type="error" show-icon :message="loadError" style="margin-bottom: 12px">
+        <template #action>
+          <a-button size="small" @click="load">{{ t('action_retry') }}</a-button>
+        </template>
+      </a-alert>
       <a-table
         class="xui-table"
         :columns="columns"
@@ -203,6 +215,13 @@ const columns = computed(() => [
         :pagination="false"
         size="small"
       >
+        <template #emptyText>
+          <div class="xui-empty">
+            <p class="xui-empty__title">{{ t('client_empty') }}</p>
+            <p class="xui-empty__hint">{{ t('client_empty_hint') }}</p>
+            <a-button type="primary" @click="openAdd">{{ t('client_add') }}</a-button>
+          </div>
+        </template>
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'enable'">
             <a-tag :color="record.enable ? 'green' : 'red'">{{ record.enable ? t('enable') : t('disable') }}</a-tag>

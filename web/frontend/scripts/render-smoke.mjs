@@ -108,6 +108,11 @@ process.stdout.write(
     // 可交互控件不止 <button>：侧边栏是 role=menuitem，表格操作列是 <a>。
     // 只数 button 会把"页面其实是活的"误判成死页。
     actionable: doc.querySelectorAll("#app button, #app a, #app [role='menuitem']").length,
+    glass: doc.querySelectorAll("#app .xui-glass").length,
+    loginMain: Boolean(doc.querySelector("main.xui-login")),
+    skip: Boolean(doc.querySelector("a.xui-skip")),
+    linkButtons: doc.querySelectorAll("#app button.xui-link-btn").length,
+    autocompleteUser: Boolean(doc.querySelector('#app input[autocomplete="username"]')),
     errors,
   }) + "\n",
 );

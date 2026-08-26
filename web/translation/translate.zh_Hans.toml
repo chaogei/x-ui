@@ -315,3 +315,18 @@
 "twofa_disable" = "关闭"
 "twofa_disable_hint" = "关闭两步验证需要同时提供口令和一个当前验证码。"
 "twofa_recovery_once" = "请立刻保存这些找回码——每张只能用一次，且不会再次显示。"
+
+# ------- UI 交互打磨 -------
+"menu_close" = "关闭菜单"
+"login_failed" = "登录失败，请检查用户名和密码。"
+"load_failed" = "页面加载失败，请重试。"
+"action_retry" = "重试"
+"inbound_filter_ph" = "按备注、端口或协议筛选"
+"inbound_filter_empty" = "没有符合筛选条件的入站"
+"unsaved_changes" = "有未保存的更改"
+"unsaved_changes_hint" = "当前页还有没保存的修改，确定要离开吗？"
+"restarting_panel" = "正在重启面板…"
+"confirm_install_core" = "切换内核会短暂停掉正在运行的核心。确定继续？"
+"client_empty" = "这个入站还没有客户端"
+"client_empty_hint" = "添加一个客户端即可发放凭证和订阅链接。"
+"status_loading" = "正在加载状态…"
