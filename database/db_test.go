@@ -209,7 +209,18 @@ func TestSchemaIsCreated(t *testing.T) {
 // An absent path is a startup configuration error. It must not silently select
 // SQLite's special empty DSN or create a database in the process directory.
 func TestInitDBRejectsMissingPath(t *testing.T) {
-	t.Chdir(t.TempDir())
+	oldDir, err := os.Getwd()
+	if err != nil {
+		t.Fatalf("get working directory: %v", err)
+	}
+	if err := os.Chdir(t.TempDir()); err != nil {
+		t.Fatalf("enter temporary directory: %v", err)
+	}
+	t.Cleanup(func() {
+		if err := os.Chdir(oldDir); err != nil {
+			t.Errorf("restore working directory: %v", err)
+		}
+	})
 	old := SetCredentialsOutput(io.Discard)
 	t.Cleanup(func() { SetCredentialsOutput(old) })
 	t.Cleanup(func() { _ = CloseDB() })
