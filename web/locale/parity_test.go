@@ -90,6 +90,37 @@ func TestEveryLanguageDefinesTheSameKeys(t *testing.T) {
 	}
 }
 
+// TestMessagesReturnsEachLanguage 是 Messages 的护栏。
+//
+// 前端整本词典都从这里来。词典表按 Supported[].Tag 索引，而 TOML 文件名用的
+// 是下划线（translate.en_US.toml）—— 两者只要对不上，Messages 就会对每一种
+// 语言都落回默认值甚至返回 nil，界面上全是裸露的 message id。这种故障
+// 不会让任何请求失败，只会让页面变成一堆 key，所以必须有用例盯着。
+func TestMessagesReturnsEachLanguage(t *testing.T) {
+	if err := Init(os.DirFS(".."), "translation"); err != nil {
+		t.Fatalf("init locale: %v", err)
+	}
+
+	for _, lang := range Supported {
+		t.Run(lang.Tag, func(t *testing.T) {
+			msgs := Messages(lang.Tag)
+			if len(msgs) == 0 {
+				t.Fatalf("Messages(%q) is empty; the whole UI would render raw message ids", lang.Tag)
+			}
+			// login 是每种语言都必有的键，且三种语言的译文互不相同，
+			// 因此它也能证明返回的确实是这门语言而不是默认词典。
+			if msgs["login"] == "" {
+				t.Errorf("Messages(%q) has no %q entry", lang.Tag, "login")
+			}
+		})
+	}
+
+	// 未知标签回落到默认语言而不是空表。
+	if len(Messages("kl-KL")) == 0 {
+		t.Error("Messages fell through to an empty dictionary for an unknown tag")
+	}
+}
+
 // 空值等同于缺失：go-i18n 会把它渲染成空字符串，按钮上什么都不显示。
 func TestNoTranslationIsEmpty(t *testing.T) {
 	for name, path := range translationFiles(t) {

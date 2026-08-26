@@ -51,6 +51,12 @@ var Supported = []Lang{
 var (
 	mu     sync.RWMutex
 	bundle *i18n.Bundle
+	// dictionaries 是按语言标签索引的完整词条表。
+	//
+	// go-i18n 的 Bundle 只支持"按 id 查一条"，而前端需要一次性拿到整本词典
+	// （SPA 渲染时不可能为每个字符串回一次服务端）。这里在加载 TOML 时顺手
+	// 留一份原始 map，避免在前端再维护一套翻译文件——两套词典必然会漂移。
+	dictionaries map[string]map[string]string
 )
 
 // Init 从给定文件系统的 root 目录加载全部 toml 词典。
@@ -58,6 +64,8 @@ var (
 func Init(fsys fs.FS, root string) error {
 	b := i18n.NewBundle(language.SimplifiedChinese)
 	b.RegisterUnmarshalFunc("toml", toml.Unmarshal)
+	dicts := make(map[string]map[string]string, len(Supported))
+
 	err := fs.WalkDir(fsys, root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			return err
@@ -69,16 +77,87 @@ func Init(fsys fs.FS, root string) error {
 		if err != nil {
 			return err
 		}
-		_, err = b.ParseMessageFileBytes(data, path)
-		return err
+		if _, err := b.ParseMessageFileBytes(data, path); err != nil {
+			return err
+		}
+		tag := tagFromFilename(path)
+		if tag == "" {
+			return nil
+		}
+		entries := map[string]string{}
+		if _, err := toml.Decode(string(data), &entries); err != nil {
+			return err
+		}
+		dicts[tag] = entries
+		return nil
 	})
 	if err != nil {
 		return err
 	}
 	mu.Lock()
 	bundle = b
+	dictionaries = dicts
 	mu.Unlock()
 	return nil
+}
+
+// tagFromFilename 从 translate.<tag>.toml 里取出语言标签。
+//
+// 文件名用下划线（translate.en_US.toml），而 Supported 里的 Tag 用连字符
+// （en-US）—— 不换回来，Messages 就会对每一种语言都查不到，整个界面退化成
+// 一堆裸露的 message id。
+func tagFromFilename(path string) string {
+	name := path
+	if idx := strings.LastIndex(name, "/"); idx >= 0 {
+		name = name[idx+1:]
+	}
+	name = strings.TrimPrefix(name, "translate.")
+	name = strings.TrimSuffix(name, ".toml")
+	return strings.ReplaceAll(name, "_", "-")
+}
+
+// Messages 返回某个语言的完整词条表，供前端一次性载入。
+//
+// 找不到该语言时回落到默认语言（简体中文，与 i18n.NewBundle 的默认一致），
+// 而不是返回空表：空表会让整个界面变成一堆裸露的 message id。
+func Messages(tag string) map[string]string {
+	mu.RLock()
+	defer mu.RUnlock()
+	if d, ok := dictionaries[tag]; ok {
+		return d
+	}
+	return dictionaries["zh-Hans"]
+}
+
+// CurrentTag 返回本次请求实际生效的词典标签。
+//
+// 优先级与 NewLocalizer 一致：lang cookie 优先于 Accept-Language。
+func CurrentTag(c *gin.Context) string {
+	if c == nil || c.Request == nil {
+		return "zh-Hans"
+	}
+	if tag := CookieLang(c.Request); tag != "" {
+		return tag
+	}
+	return matchAcceptLanguage(c.GetHeader("Accept-Language"))
+}
+
+// matchAcceptLanguage 把 Accept-Language 头解析成一个受支持的词典标签。
+//
+// 只做前缀匹配而不引第三方协商库：面板只有三种语言，按 q 值排序的收益
+// 抵不上多一个依赖的成本。
+//
+// 一个都匹配不上时回落到 zh-Hans，因为那是 i18n.NewBundle 的默认语言：
+// 服务端返回的操作提示走 localizer，页面文案走这份词典，两者必须选中
+// 同一种语言，否则同一个界面上会出现两种语言混排。
+func matchAcceptLanguage(header string) string {
+	for _, part := range strings.Split(header, ",") {
+		code := strings.TrimSpace(strings.SplitN(part, ";", 2)[0])
+		if tag := normalizeCode(code); tag != "" {
+			return tag
+		}
+	}
+	return "zh-Hans"
 }
 
 // Bundle 返回当前词典集合；未初始化时返回 nil。

@@ -49,7 +49,7 @@ func (a *IndexController) index(c *gin.Context) {
 		c.Redirect(http.StatusTemporaryRedirect, "xui/")
 		return
 	}
-	html(c, "login.html", I18n(c, "login"), nil)
+	html(c, "login", I18n(c, "login"), nil)
 }
 
 func (a *IndexController) login(c *gin.Context) {

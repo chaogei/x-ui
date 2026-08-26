@@ -9,18 +9,21 @@ import (
 	"x-ui/web/locale"
 )
 
-// 登录页用户名输入框的 placeholder 就是 {{ i18n "username" }} 的渲染结果。
-// 挑这个位置是因为它唯一：页面里别处的 "username" 是 Vue 的 v-model 绑定，
-// 不随语言变化，拿来判定语言会一直误报。
-var usernamePlaceholders = map[string]string{
-	"en-US": `placeholder='username'`,
-	"zh-CN": `placeholder='用户名'`,
-	"zh-TW": `placeholder='使用者名稱'`,
+// 前端是 Vue 3 单页应用，可见文案由 JS 在浏览器里渲染，服务端返回的 HTML 里
+// 没有翻译好的 placeholder 可抓。语言选择依然完全发生在服务端：它把整本词典
+// 注入 window.__XUI__.i18n，前端只负责查表。
+//
+// 所以这里改成断言注入的词典本身。挑 "username" 这一条是因为三种语言的译文
+// 互不相同，且 `"username":` 这个前缀在 JSON 里唯一，不会与别处的同名字段撞上。
+var usernameEntries = map[string]string{
+	"en-US": `"username":"username"`,
+	"zh-CN": `"username":"用户名"`,
+	"zh-TW": `"username":"使用者名稱"`,
 }
 
-// languageOf 根据登录页的 placeholder 判定页面语言。
+// languageOf 根据页面注入的 i18n 词典判定生效语言。
 func languageOf(body string) string {
-	for code, marker := range usernamePlaceholders {
+	for code, marker := range usernameEntries {
 		if strings.Contains(body, marker) {
 			return code
 		}
@@ -126,9 +129,9 @@ func TestE2EConcurrentLanguagesDoNotMix(t *testing.T) {
 				if got := languageOf(body); got != want {
 					t.Errorf("a concurrent %s request rendered %s", header, got)
 				}
-				// 一个页面里只应出现一种语言的用户名 placeholder。
+				// 一个页面里只应注入一种语言的词典。
 				variants := 0
-				for _, marker := range usernamePlaceholders {
+				for _, marker := range usernameEntries {
 					if strings.Contains(body, marker) {
 						variants++
 					}
@@ -144,6 +147,9 @@ func TestE2EConcurrentLanguagesDoNotMix(t *testing.T) {
 
 // TestE2ELanguageSwitcherIsRendered 侧边栏得真有个切换入口，
 // 否则 lang cookie 只有会改 devtools 的人用得上。
+//
+// 可选语言表由服务端注入（window.__XUI__.languages），前端照着渲染菜单；
+// 这里断言注入的那份数据完整，等价于断言菜单不缺项。
 func TestE2ELanguageSwitcherIsRendered(t *testing.T) {
 	p := newPanel(t)
 	p.login()
@@ -152,6 +158,10 @@ func TestE2ELanguageSwitcherIsRendered(t *testing.T) {
 	for _, lang := range locale.Supported {
 		if !strings.Contains(body, lang.Name) {
 			t.Errorf("the language switcher does not offer %q (%s)", lang.Name, lang.Code)
+		}
+		// 菜单项的 key 是 code，缺了它点击之后写不出正确的 lang cookie。
+		if !strings.Contains(body, `"Code":"`+lang.Code+`"`) {
+			t.Errorf("the injected language list has no code for %q", lang.Name)
 		}
 	}
 }

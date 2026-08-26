@@ -10,15 +10,9 @@ import (
 	"x-ui/web/locale"
 )
 
-// TestEmbeddedTemplatesCoverEveryFile 是一条便宜但价值极高的护栏。
-//
-// //go:embed html/* 默认会跳过以 `_` 或 `.` 开头的文件。仓库里
-// html/xui/form/_tls.html 与 _transport.html 就叫这个名字，于是 release
-// 构建里它们根本不在二进制里：每个协议表单都会在渲染时报
-// `no such template "form/_tls"`，入站页返回 200 但 body 为空。
-//
-// 开发模式从磁盘读模板，所以本地怎么点都是好的——只有装出来的包才坏。
-// 这条用例把"磁盘上有几个模板文件"与"二进制里有几个"钉在一起。
+// TestEmbeddedTemplatesCoverEveryFile 把"磁盘上有几个模板文件"与"二进制里有几个"
+// 钉在一起。//go:embed html/* 默认会跳过以 `_` 或 `.` 开头的文件，而开发模式是从
+// 磁盘读模板的 —— 本地怎么点都是好的，只有装出来的包才坏。
 func TestEmbeddedTemplatesCoverEveryFile(t *testing.T) {
 	embedded := make(map[string]bool)
 	err := fs.WalkDir(htmlFS, "html", func(p string, d fs.DirEntry, err error) error {
@@ -84,6 +78,73 @@ func TestEveryTemplateReferenceResolves(t *testing.T) {
 				t.Errorf("template %q references %q, which is not defined anywhere", sub.Name(), ref)
 			}
 		}
+	}
+}
+
+// TestFrontendBundleIsEmbedded 是 Vue 3 迁移之后最重要的一条护栏。
+//
+// 模板已经退化成一层挂载 #app 的壳，页面上所有内容都由 assets/dist/xui.js 渲染。
+// 只要有人忘了跑 `npm run build`（或者把产物加进了 .gitignore），二进制照样编译、
+// 页面照样返回 200，但用户看到的是一张白页。这里直接对着 embed 出来的文件系统检查
+// 产物存在且不是占位符。
+func TestFrontendBundleIsEmbedded(t *testing.T) {
+	for _, tc := range []struct {
+		name    string
+		minSize int
+	}{
+		{"assets/dist/xui.js", 100 * 1024},
+		{"assets/dist/xui.css", 1024},
+	} {
+		data, err := assetsFS.ReadFile(tc.name)
+		if err != nil {
+			t.Fatalf("%s is not in the binary (did you run `npm --prefix web/frontend run build`?): %v", tc.name, err)
+		}
+		if len(data) < tc.minSize {
+			t.Errorf("%s is only %d bytes, expected at least %d — that looks like a stub, not a real Vite build",
+				tc.name, len(data), tc.minSize)
+		}
+	}
+}
+
+// TestNoVue2AssetsRemain 防止 Vue 2 / Ant Design Vue 1.x 悄悄回到二进制里。
+//
+// 两者都已 EOL。迁移之后 assets/ 下只应该有 Vite 产物；任何 vue@2 / antd 1.7
+// 的目录或者 CDN 引用都说明迁移被回退了一半。
+func TestNoVue2AssetsRemain(t *testing.T) {
+	banned := []string{"vue@2", "ant-design-vue@1", "moment", "qs/", "uri/", "base64/"}
+	err := fs.WalkDir(assetsFS, "assets", func(p string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		for _, b := range banned {
+			if strings.Contains(p+"/", "/"+b) {
+				t.Errorf("legacy asset %q is still embedded in the binary", p)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk embedded assets: %v", err)
+	}
+
+	// 模板里也不能再有指向 Vue 2 的 <script>。
+	err = fs.WalkDir(htmlFS, "html", func(p string, d fs.DirEntry, err error) error {
+		if err != nil || d.IsDir() {
+			return err
+		}
+		body, err := htmlFS.ReadFile(p)
+		if err != nil {
+			return err
+		}
+		for _, b := range []string{"vue@2", "ant-design-vue@1", "vue.min.js", "antd.min.js"} {
+			if strings.Contains(string(body), b) {
+				t.Errorf("template %q still references %q", p, b)
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatalf("walk embedded html: %v", err)
 	}
 }
 

@@ -1,0 +1,66 @@
+html,
+body,
+#app {
+  height: 100%;
+  margin: 0;
+}
+
+.xui-content {
+  margin: 24px 16px;
+}
+
+@media (max-width: 768px) {
+  .xui-content {
+    margin: 12px 8px;
+  }
+}
+
+.xui-login {
+  min-height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+}
+
+.xui-login__card {
+  width: 100%;
+  max-width: 380px;
+}
+
+.xui-login__title {
+  text-align: center;
+  color: #fff;
+  margin-bottom: 32px;
+  font-size: 28px;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
+}
+
+.xui-card {
+  margin-bottom: 16px;
+}
+
+.xui-gauge {
+  text-align: center;
+}
+
+.xui-kv p {
+  margin: 4px 0;
+}
+
+.xui-form-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 24px;
+}
+
+.xui-form-grid > .ant-form-item {
+  margin-bottom: 8px;
+}
+
+.xui-recovery-codes {
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px 16px;
+}

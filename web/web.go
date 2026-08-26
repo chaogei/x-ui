@@ -31,14 +31,12 @@ import (
 	"github.com/robfig/cron/v3"
 )
 
+// assets 里放的是 Vite 产物（assets/dist/xui.js|css）。用 all: 前缀是为了
+// 不让 embed 默认规则吞掉以 `_`/`.` 开头的构建输出（Rollup 的 chunk 命名会用到）。
+//
 //go:embed all:assets
 var assetsFS embed.FS
 
-// 必须用 all: 前缀：默认的 embed 模式会跳过以 `_` 或 `.` 开头的文件，
-// 而 html/xui/form/ 下的 _tls.html 与 _transport.html 正是这种命名。
-// 少了它们，release 构建里每个协议表单都会因 `no such template "form/_tls"`
-// 渲染失败，入站页返回 200 但内容为空——开发模式（从磁盘读模板）看不出来。
-//
 //go:embed all:html
 var htmlFS embed.FS
 

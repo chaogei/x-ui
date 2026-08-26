@@ -93,27 +93,59 @@ func pureJsonMsg(c *gin.Context, success bool, msg string) {
 	}
 }
 
-// html 渲染一个模板。
+// htmlLangAttr 把内部词典标签映射成 <html lang> 用的 BCP-47 值。
+var htmlLangAttr = map[string]string{
+	"zh-Hans": "zh-CN",
+	"zh-Hant": "zh-TW",
+	"en-US":   "en",
+}
+
+// html 渲染面板外壳页。
+//
+// 前端是一个 Vue 3 单页应用（源码在 web/frontend，产物在 web/assets/dist），
+// Go 这边只剩一张外壳模板 app.html：挂载点 + 一行引导数据。
 //
 // 不走 gin 的 HTMLRender：后者拿不到 gin.Context，无法给模板注入
-// 「本次请求的 localizer」。这里改用 web/render 的请求级渲染器，
-// 每次执行前 Clone 模板并绑定当前语言的 i18n 函数。
-func html(c *gin.Context, name string, title string, data gin.H) {
-	if data == nil {
-		data = gin.H{}
+// 「本次请求的 localizer」。这里改用 web/render 的请求级渲染器。
+//
+// page 决定前端挂哪个视图。由服务端下发而不是让前端解析 location.pathname：
+// basePath 可以被改成任意前缀，前端自己猜必然会猜错。
+func html(c *gin.Context, page string, title string, extra gin.H) {
+	basePath := c.GetString("base_path")
+	tag := locale.CurrentTag(c)
+
+	// boot 是注入到 window.__XUI__ 的全部服务端状态。
+	//
+	// i18n 整本词典一次性下发：SPA 渲染时不可能为每个字符串回一次服务端，
+	// 而在前端另建一套翻译文件必然与 translation/*.toml 漂移。
+	boot := gin.H{
+		"basePath": basePath,
+		"page":     page,
+		// 与 <meta name="csrf-token"> 同源，前端优先读 meta。
+		"csrfToken": middleware.SessionCSRFToken(c),
+		"lang":      tag,
+		"langCode":  locale.CurrentCode(c),
+		"languages": locale.Supported,
+		"i18n":      locale.Messages(tag),
+		// protocols 是 sing-box 协议元数据单一来源（core/singbox/spec）的前端副本。
+		"protocols":          spec.All(),
+		"version":            config.GetVersion(),
+		"requestUri":         c.Request.RequestURI,
+		"initialCredentials": false,
 	}
-	data["title"] = title
-	data["request_uri"] = c.Request.RequestURI
-	data["base_path"] = c.GetString("base_path")
-	// csrf_token 由 middleware.CSRF 在请求 context 里注入，供 head 模板渲染到 <meta name="csrf-token">
-	data["csrf_token"] = middleware.SessionCSRFToken(c)
-	// protocol_specs 是 sing-box 协议元数据单一来源的前端副本。
-	// 以 []spec.Spec 注入，Go html/template 在 <script> 上下文会按 JS 字面量编码，
-	// 前端拿到的直接是对象字面量，无需 JSON.parse。
-	data["protocol_specs"] = spec.All()
-	// 语言切换器需要知道可选语言与当前选择。
-	data["languages"] = locale.Supported
-	data["current_lang"] = locale.CurrentCode(c)
+	for key, value := range extra {
+		boot[key] = value
+	}
+
+	data := gin.H{
+		"title":      title,
+		"base_path":  basePath,
+		"cur_ver":    config.GetVersion(),
+		"csrf_token": middleware.SessionCSRFToken(c),
+		"html_lang":  htmlLangAttr[tag],
+		"noscript":   I18n(c, "noscript_hint"),
+		"boot":       boot,
+	}
 
 	r := render.Global()
 	if r == nil {
@@ -121,21 +153,9 @@ func html(c *gin.Context, name string, title string, data gin.H) {
 		return
 	}
 	loc := locale.FromContext(c)
-	if err := r.Render(c, http.StatusOK, name, locale.FuncMap(loc), getContext(data)); err != nil {
-		logger.Warningf("render template %q failed: %v", name, err)
+	if err := r.Render(c, http.StatusOK, "app.html", locale.FuncMap(loc), data); err != nil {
+		logger.Warningf("render page %q failed: %v", page, err)
 	}
-}
-
-func getContext(h gin.H) gin.H {
-	a := gin.H{
-		"cur_ver": config.GetVersion(),
-	}
-	if h != nil {
-		for key, value := range h {
-			a[key] = value
-		}
-	}
-	return a
 }
 
 func isAjax(c *gin.Context) bool {

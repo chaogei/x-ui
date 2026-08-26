@@ -376,18 +376,23 @@ func TestE2EWrongOldPasswordIsRejected(t *testing.T) {
 
 // TestE2EInboundsPageShowsTheCredentialWarning 覆盖那条被写死为 v-if="false"
 // 的安全告警：它现在由真实标记驱动，改密之后自动消失。
-const warnInitialCredentialsEN = "You are still using the randomly generated first-boot password"
+//
+// 告警文案本身在 i18n 词典里，而整本词典对每个页面都会注入，所以搜文案什么
+// 也证明不了。真正决定告警显不显示的是注入的 initialCredentials 布尔量，
+// 这里就断言它。
+const (
+	warnInitialCredentialsOn  = `"initialCredentials":true`
+	warnInitialCredentialsOff = `"initialCredentials":false`
+)
 
 func TestE2EInboundsPageShowsTheCredentialWarning(t *testing.T) {
 	p := newPanel(t)
 	p.login()
 
-	english := [2]string{"Accept-Language", "en-US"}
-
-	before := string(readBody(t, p.get("xui/inbounds", english)))
-	if !strings.Contains(before, warnInitialCredentialsEN) {
-		t.Fatalf("the inbounds page does not warn about the generated password:\n%s",
-			excerpt(before, "a-alert"))
+	before := string(readBody(t, p.get("xui/inbounds")))
+	if !strings.Contains(before, warnInitialCredentialsOn) {
+		t.Fatalf("the inbounds page does not flag the generated password:\n%s",
+			excerpt(before, "__XUI__"))
 	}
 
 	if msg := p.decode(p.postForm("xui/setting/updateUser", url.Values{
@@ -399,9 +404,9 @@ func TestE2EInboundsPageShowsTheCredentialWarning(t *testing.T) {
 		t.Fatalf("change password failed: %s", msg.Msg)
 	}
 
-	after := string(readBody(t, p.get("xui/inbounds", english)))
-	if strings.Contains(after, warnInitialCredentialsEN) {
-		t.Error("the warning is still shown after the operator set their own password")
+	after := string(readBody(t, p.get("xui/inbounds")))
+	if !strings.Contains(after, warnInitialCredentialsOff) {
+		t.Error("the warning flag is still set after the operator set their own password")
 	}
 }
 

@@ -1,0 +1,29 @@
+{{define "app.html"}}<!DOCTYPE html>
+<html lang="{{ .html_lang }}">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="referrer" content="same-origin">
+    <!--
+      csrf_token 由 middleware.CSRF 注入。前端 axios 拦截器从这个 meta 读它，
+      端到端测试也从这里抓——两者共用同一个来源，测试才算真的在测浏览器路径。
+    -->
+    <meta name="csrf-token" content="{{ .csrf_token }}">
+    <link rel="stylesheet" href="{{ .base_path }}assets/dist/xui.css?{{ .cur_ver }}">
+    <!--
+      window.__XUI__ 是服务端注入的引导数据：basePath、当前页、CSRF token、
+      整本 i18n 词典、sing-box 协议元数据。
+      在 <script> 上下文里由 Go 的 html/template 自动按 JS 字面量编码，
+      前端不需要 JSON.parse，也没有"页面已经渲染但数据还没到"的时序窗口。
+    -->
+    <script>window.__XUI__ = {{ .boot }};</script>
+    <title>{{ .title }}</title>
+</head>
+<body>
+<div id="app"></div>
+<noscript>{{ .noscript }}</noscript>
+<!-- 打包产物由 web/frontend 生成（npm run build），随 //go:embed all:assets 进二进制。 -->
+<script type="module" src="{{ .base_path }}assets/dist/xui.js?{{ .cur_ver }}"></script>
+</body>
+</html>
+{{end}}

@@ -1,0 +1,28 @@
+{
+  "name": "x-ui-frontend",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "x-ui panel frontend: Vue 3 + Ant Design Vue 4, bundled into ../assets/dist and embedded in the Go binary.",
+  "scripts": {
+    "build": "vue-tsc --noEmit && vite build",
+    "build:fast": "vite build",
+    "watch": "vite build --watch --mode development",
+    "typecheck": "vue-tsc --noEmit"
+  },
+  "dependencies": {
+    "@ant-design/icons-vue": "^7.0.1",
+    "ant-design-vue": "^4.2.6",
+    "axios": "^1.7.9",
+    "dayjs": "^1.11.13",
+    "qrcode": "^1.5.4",
+    "vue": "^3.5.13"
+  },
+  "devDependencies": {
+    "@types/qrcode": "^1.5.5",
+    "@vitejs/plugin-vue": "^5.2.1",
+    "typescript": "^5.7.2",
+    "vite": "^6.0.7",
+    "vue-tsc": "^2.2.0"
+  }
+}

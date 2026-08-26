@@ -8,10 +8,14 @@ import (
 	"testing"
 )
 
-// protocolSpecJS 是前端协议元数据补丁的位置（相对本包目录）。
-const protocolSpecJS = "../../../web/assets/js/model/protocol_spec.js"
+// 前端源码位置（相对本包目录）。Vue 3 迁移后它们是 TypeScript，
+// 但扫描器只依赖 `_frontendPatch` 的字面量形态，与语言无关。
+const (
+	protocolSpecTS = "../../../web/frontend/src/models/protocols.ts"
+	coreModelTS    = "../../../web/frontend/src/models/core.ts"
+)
 
-// readFrontendPatch 解析 protocol_spec.js 里 `_frontendPatch` 的顶层协议键
+// readFrontendPatch 解析 protocols.ts 里 `_frontendPatch` 的顶层协议键
 // 及其 defaults() 函数体。
 //
 // 为什么用文本解析而不是跑一个 JS 引擎：这份补丁的形态被文件里的注释约定死了
@@ -20,7 +24,7 @@ const protocolSpecJS = "../../../web/assets/js/model/protocol_spec.js"
 func readFrontendPatch(t *testing.T) map[string]string {
 	t.Helper()
 
-	path := filepath.FromSlash(protocolSpecJS)
+	path := filepath.FromSlash(protocolSpecTS)
 	raw, err := os.ReadFile(path)
 	if err != nil {
 		t.Fatalf("read %s: %v", path, err)
@@ -200,13 +204,14 @@ func TestFrontendDefaultsMatchUserSchema(t *testing.T) {
 // TestFrontendReadsBackendSpecs 确认前端没有把协议列表硬编码回去。
 // 单一数据源的整个价值就在这一点上。
 func TestFrontendReadsBackendSpecs(t *testing.T) {
-	raw, err := os.ReadFile(filepath.FromSlash(protocolSpecJS))
+	raw, err := os.ReadFile(filepath.FromSlash(protocolSpecTS))
 	if err != nil {
-		t.Fatalf("read protocol_spec.js: %v", err)
+		t.Fatalf("read protocols.ts: %v", err)
 	}
 	src := string(raw)
-	if !strings.Contains(src, "window.__PROTOCOL_SPECS__") {
-		t.Error("protocol_spec.js must take its protocol list from the backend-injected window.__PROTOCOL_SPECS__")
+	// boot.protocols 就是服务端注入的 window.__XUI__.protocols（见 web/frontend/src/boot.ts）。
+	if !strings.Contains(src, "boot.protocols") {
+		t.Error("protocols.ts must take its protocol list from the backend-injected boot.protocols")
 	}
 }
 
@@ -215,21 +220,29 @@ func TestFrontendReadsBackendSpecs(t *testing.T) {
 // 修复前 RealityBlock 没有 public_key 字段，genVlessLink 读到 undefined，
 // 生成的链接里 pbk 为空，客户端一律握手失败。
 func TestRealityPublicKeyIsInTheFrontendModel(t *testing.T) {
-	raw, err := os.ReadFile(filepath.FromSlash("../../../web/assets/js/model/core.js"))
+	raw, err := os.ReadFile(filepath.FromSlash(coreModelTS))
 	if err != nil {
-		t.Fatalf("read core.js: %v", err)
+		t.Fatalf("read core.ts: %v", err)
 	}
 	src := string(raw)
 
 	realityStart := strings.Index(src, "class RealityBlock")
 	if realityStart < 0 {
-		t.Fatal("core.js no longer defines RealityBlock")
+		t.Fatal("core.ts no longer defines RealityBlock")
 	}
 	// 取到下一个 class 声明为止，作为 RealityBlock 的定义范围。
+	// 界定范围是这条用例的关键：否则 public_key 在文件里任何地方出现都算通过，
+	// 断言就退化成"core.ts 里提到过这个词"。
 	realityBody := src[realityStart:]
-	if next := strings.Index(realityBody[len("class RealityBlock"):], "\nclass "); next >= 0 {
-		realityBody = realityBody[:next+len("class RealityBlock")]
+	rest := realityBody[len("class RealityBlock"):]
+	next := strings.Index(rest, "\nclass ")
+	if e := strings.Index(rest, "\nexport class "); e >= 0 && (next < 0 || e < next) {
+		next = e
 	}
+	if next < 0 {
+		t.Fatal("core.ts: cannot find where RealityBlock ends; this test would stop proving anything")
+	}
+	realityBody = realityBody[:next+len("class RealityBlock")]
 
 	for _, want := range []string{"public_key", "private_key"} {
 		if !strings.Contains(realityBody, want) {

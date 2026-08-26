@@ -2,9 +2,13 @@
 tmp
 bin/xray-darwin-arm64
 bin/config.json
-dist/
+# release.yml 把各架构产物下载到仓库根的 dist/；这里只忽略那一个目录。
+# 前端产物 web/assets/dist/ 必须提交：它被 //go:embed 进二进制，
+# 否则不装 Node 就 `go build` 出来的面板会是一张白页。
+/dist/
 x-ui-*.tar.gz
 /x-ui
 /release.sh
 .sync*
 main
+node_modules/
