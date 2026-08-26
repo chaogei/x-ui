@@ -31,9 +31,9 @@ const trafficBatchSize = 100
 //   - 按 keep 过滤维度（入站 / 用户），不属于本次入账的计数器直接丢掉；
 //   - 丢掉零增量：内核在 reset=true 下仍会返回上一周期没有流量的计数器，
 //     为它们发 UPDATE 是纯粹的浪费；
-//   - 合并同名条目。正常情况下 aggregateTraffic 已经去过重，这里兜底
-//     防止同一个键在一条 CASE 里出现两次——SQL 的 CASE 只会命中第一个分支，
-//     那样后面的字节会被静默吞掉。
+//   - 合并同名条目。正常情况下 aggregateTraffic 已经去过重，这里兜底：
+//     同一个键在批次里出现两次，连接更新会把那一行改写两遍，
+//     结果取决于执行顺序——最好的情况也只是少记一笔。
 //
 // 返回值按 Key 排序，让生成的 SQL 在相同输入下逐字节稳定（便于测试与日志比对）。
 func foldTraffic(traffics []*core.Traffic, keep func(*core.Traffic) bool) []trafficDelta {
