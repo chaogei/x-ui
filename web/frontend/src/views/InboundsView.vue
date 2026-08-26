@@ -306,12 +306,14 @@ onBeforeUnmount(() => {
           </div>
         </dl>
         <footer class="xui-card-row__actions">
-          <a @click="showInfo(row)">{{ t('view') }}</a>
-          <a @click="showClients(row)">{{ t('client_list') }}</a>
-          <a v-if="row.hasLink()" @click="showQrcode(row)">{{ t('qrcode') }}</a>
-          <a @click="openEdit(row)">{{ t('edit') }}</a>
-          <a @click="resetTraffic(row)">{{ t('reset_traffic') }}</a>
-          <a class="xui-danger-link" @click="remove(row)">{{ t('delete') }}</a>
+          <button type="button" class="xui-link-btn" @click="showInfo(row)">{{ t('view') }}</button>
+          <button type="button" class="xui-link-btn" @click="showClients(row)">{{ t('client_list') }}</button>
+          <button v-if="row.hasLink()" type="button" class="xui-link-btn" @click="showQrcode(row)">
+            {{ t('qrcode') }}
+          </button>
+          <button type="button" class="xui-link-btn" @click="openEdit(row)">{{ t('edit') }}</button>
+          <button type="button" class="xui-link-btn" @click="resetTraffic(row)">{{ t('reset_traffic') }}</button>
+          <button type="button" class="xui-link-btn xui-danger-link" @click="remove(row)">{{ t('delete') }}</button>
         </footer>
       </article>
 
@@ -367,12 +369,18 @@ onBeforeUnmount(() => {
           </template>
           <template v-else-if="column.key === 'action'">
             <a-space :size="4" wrap>
-              <a @click="showInfo(record)">{{ t('view') }}</a>
-              <a @click="showClients(record)">{{ t('client_list') }}</a>
-              <a v-if="record.hasLink()" @click="showQrcode(record)">{{ t('qrcode') }}</a>
-              <a @click="openEdit(record)">{{ t('edit') }}</a>
-              <a @click="resetTraffic(record)">{{ t('reset_traffic') }}</a>
-              <a class="xui-danger-link" @click="remove(record)">{{ t('delete') }}</a>
+              <button type="button" class="xui-link-btn" @click="showInfo(record)">{{ t('view') }}</button>
+              <button type="button" class="xui-link-btn" @click="showClients(record)">{{ t('client_list') }}</button>
+              <button v-if="record.hasLink()" type="button" class="xui-link-btn" @click="showQrcode(record)">
+                {{ t('qrcode') }}
+              </button>
+              <button type="button" class="xui-link-btn" @click="openEdit(record)">{{ t('edit') }}</button>
+              <button type="button" class="xui-link-btn" @click="resetTraffic(record)">
+                {{ t('reset_traffic') }}
+              </button>
+              <button type="button" class="xui-link-btn xui-danger-link" @click="remove(record)">
+                {{ t('delete') }}
+              </button>
             </a-space>
           </template>
         </template>

@@ -47,7 +47,9 @@
   /* 表格里钉住的操作列必须挡住从下面滚过去的内容。 */
   --xui-fixed-cell-bg: rgba(13, 18, 34, 0.94);
 
-  /* 键盘焦点环。与 theme.ts 的 colorPrimaryBorder 同一个亮度档。 */
+  /* 链接色与键盘焦点环。与 theme.ts 的 colorLink / colorPrimaryBorder 同值。 */
+  --xui-link: #8ea6ff;
+  --xui-link-hover: #b7c6ff;
   --xui-focus: #8ea6ff;
 
   --xui-shadow: 0 18px 40px rgba(3, 6, 16, 0.45);
@@ -727,6 +729,31 @@ textarea:focus-visible,
   color: var(--xui-danger);
   border-color: rgba(251, 113, 133, 0.35);
   background: rgba(251, 113, 133, 0.12);
+}
+
+/*
+  表格行与手机卡片里的那排操作。
+
+  它们本来是 <a @click="...">。没有 href 的锚点既不进 Tab 顺序，也不会被辅助
+  技术报成链接 —— 于是"查看 / 客户端 / 二维码 / 编辑 / 重置流量 / 删除"这一
+  整排操作，对只用键盘的人等于不存在（用 Tab 走一遍入站页可以验证：焦点从
+  "添加入站"直接跳到了每行的启用开关，中间六个操作一个都碰不到）。
+
+  换成 <button> 就都有了：可聚焦、回车与空格都能触发、语义也对。外观这里补回
+  一条链接的样子。
+*/
+.xui-link-btn {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--xui-link);
+  font: inherit;
+  cursor: pointer;
+  transition: color var(--xui-dur) var(--xui-ease);
+}
+
+.xui-link-btn:hover {
+  color: var(--xui-link-hover);
 }
 
 .xui-danger-link {

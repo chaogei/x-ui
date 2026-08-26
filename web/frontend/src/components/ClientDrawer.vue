@@ -225,10 +225,16 @@ const columns = computed(() => [
           </template>
           <template v-else-if="column.key === 'action'">
             <a-space>
-              <a @click="openEdit(record)">{{ t('edit') }}</a>
-              <a @click="resetTraffic(record)">{{ t('reset_traffic') }}</a>
-              <a @click="rotate(record)">{{ t('client_rotate_token') }}</a>
-              <a class="xui-danger-link" @click="remove(record)">{{ t('delete') }}</a>
+              <button type="button" class="xui-link-btn" @click="openEdit(record)">{{ t('edit') }}</button>
+              <button type="button" class="xui-link-btn" @click="resetTraffic(record)">
+                {{ t('reset_traffic') }}
+              </button>
+              <button type="button" class="xui-link-btn" @click="rotate(record)">
+                {{ t('client_rotate_token') }}
+              </button>
+              <button type="button" class="xui-link-btn xui-danger-link" @click="remove(record)">
+                {{ t('delete') }}
+              </button>
             </a-space>
           </template>
         </template>
