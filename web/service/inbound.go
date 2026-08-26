@@ -1,6 +1,7 @@
 package service
 
 import (
+	"errors"
 	"fmt"
 	"time"
 	"x-ui/core"
@@ -10,6 +11,9 @@ import (
 
 	"gorm.io/gorm"
 )
+
+// ErrInboundNotFound 表示按 id 找不到入站。
+var ErrInboundNotFound = errors.New("inbound not found")
 
 type InboundService struct {
 }
@@ -128,6 +132,14 @@ func (s *InboundService) GetInbound(id int) (*model.Inbound, error) {
 	return inbound, nil
 }
 
+// UpdateInbound 更新入站的可编辑字段。
+//
+// 刻意不接受请求里的 Up / Down —— 与 ClientService.UpdateClient 同一条规矩。
+// 表单里的那两个数是页面加载那一刻的快照，而流量任务每 10 秒就往同一行里
+// 加一次字节：把快照写回去，等于把这期间统计到的流量抹掉。改个备注、调个
+// 端口，用户的用量就凭空少一截，配额和 Telegram 日报跟着一起错。
+//
+// 计数器只有两条合法的写入路径：流量任务的累加，以及 ResetTraffic 的清零。
 func (s *InboundService) UpdateInbound(inbound *model.Inbound) error {
 	if err := ValidateInbound(inbound); err != nil {
 		return err
@@ -144,8 +156,6 @@ func (s *InboundService) UpdateInbound(inbound *model.Inbound) error {
 	if err != nil {
 		return err
 	}
-	oldInbound.Up = inbound.Up
-	oldInbound.Down = inbound.Down
 	oldInbound.Total = inbound.Total
 	oldInbound.Remark = inbound.Remark
 	oldInbound.Enable = inbound.Enable
@@ -158,8 +168,30 @@ func (s *InboundService) UpdateInbound(inbound *model.Inbound) error {
 	// Tag 需要协议参与唯一性构成：同端口的 TCP/UDP 协议共存时需要各自起名。
 	oldInbound.Tag = fmt.Sprintf("inbound-%v-%s", inbound.Port, inbound.Protocol)
 
+	// Omit 那两列，否则 Save 会把 GetInbound 那一刻读到的计数器整行写回去：
+	// 不看表单也一样丢字节——丢的是"读出来到写回去"之间入账的那批。
 	db := database.GetDB()
-	return db.Save(oldInbound).Error
+	return db.Omit("up", "down").Save(oldInbound).Error
+}
+
+// ResetTraffic 把某条入站的累计流量清零。
+//
+// 单独一条路径而不是"更新时顺便写 up/down"：清零是一个明确的意图，
+// 表单里那两个陈旧的数字不是。
+//
+// 不触发内核重启：生成配置只看 enable，与计数器无关。客户端那边之所以要重启，
+// 是因为 ActiveClientsByInbound 会按 up+down 是否超配额过滤用户，清零可能让
+// 一个被停用的用户重新进入配置——入站没有这层过滤。
+func (s *InboundService) ResetTraffic(id int) error {
+	result := database.GetDB().Model(model.Inbound{}).Where("id = ?", id).
+		Updates(map[string]interface{}{"up": 0, "down": 0})
+	if result.Error != nil {
+		return result.Error
+	}
+	if result.RowsAffected == 0 {
+		return ErrInboundNotFound
+	}
+	return nil
 }
 
 // AddTraffic 把 inbound 维度的流量累加到对应入站行。
