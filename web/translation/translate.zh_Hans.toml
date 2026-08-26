@@ -272,6 +272,7 @@
 "unit_hour" = "小时"
 "unit_day" = "天"
 "menu_toggle" = "展开 / 收起菜单"
+"skip_to_content" = "跳到主要内容"
 "inbound_empty" = "还没有入站"
 "inbound_empty_hint" = "添加第一个入站之后，流量、到期时间和客户端都会显示在这里。"
 

@@ -41,7 +41,8 @@ async function login(): Promise<void> {
 </script>
 
 <template>
-  <div class="xui-login">
+  <!-- <main>：登录页没有 AppShell，不写的话整页没有任何地标。 -->
+  <main class="xui-login">
     <div class="xui-login__card xui-glass">
       <div class="xui-login__brand">
         <span class="xui-brand__mark" aria-hidden="true">x</span>
@@ -89,12 +90,16 @@ async function login(): Promise<void> {
             {{ t('login') }}
           </a-button>
         </a-form-item>
+        <!--
+          <a-typography-link> 渲染出来是一个没有 href 的 <a>，不进 Tab 顺序 ——
+          只用键盘的人根本展不开第二因素输入框。这里用按钮。
+        -->
         <p v-if="!needCode" class="xui-login__hint">
-          <a-typography-link @click="needCode = true">{{ t('login_totp_hint') }}</a-typography-link>
+          <button type="button" class="xui-link-btn" @click="needCode = true">{{ t('login_totp_hint') }}</button>
         </p>
       </a-form>
     </div>
 
     <p class="xui-login__foot">x-ui {{ boot.version }}</p>
-  </div>
+  </main>
 </template>

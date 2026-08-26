@@ -37,6 +37,9 @@ const pageTitle = computed(() => {
 
 const LANG_PREFIX = 'lang:'
 
+/** 跳转链接的落点。id 写死即可：一个页面只有一个内容区。 */
+const CONTENT_ID = 'xui-content'
+
 function handleClick(key: string): void {
   if (key.startsWith(LANG_PREFIX)) {
     setLang(key.slice(LANG_PREFIX.length))
@@ -51,6 +54,12 @@ function handleClick(key: string): void {
 <template>
   <a-layout class="xui-shell">
     <!--
+      Tab 进页面的第一站。侧边栏在它后面，所以只用键盘的人不必先穿过十来个
+      菜单项才能够到内容区里的控件。平时移出视口（见 style.css 的 .xui-skip）。
+    -->
+    <a class="xui-skip" :href="`#${CONTENT_ID}`">{{ t('skip_to_content') }}</a>
+
+    <!--
       breakpoint="md" + collapsed-width="0"：窄屏自动收起。菜单只此一份，
       语言切换在手机上同样可达。展开/收起统一由顶栏那个按钮控制，antd 自带的
       浮动把手已在 style.css 里收掉——它绝对定位在内容区左上角，会遮住页面。
@@ -63,7 +72,13 @@ function handleClick(key: string): void {
       :collapsed-width="0"
       :width="240"
     >
-      <div class="xui-sider__inner">
+      <!--
+        导航地标标在这个 div 上而不是外面那个 <aside>：<aside> 嵌在 <section>
+        （antd 的 Layout）里时不会自动成为地标，于是品牌区和整份菜单都被算作
+        "游离在地标之外的内容"；而给 <aside> 加 role=navigation 又是一个不被
+        允许的角色组合。
+      -->
+      <div class="xui-sider__inner" role="navigation">
         <a class="xui-brand" :href="panelUrl('xui/')">
           <span class="xui-brand__mark" aria-hidden="true">x</span>
           <span class="xui-brand__text">
@@ -113,7 +128,8 @@ function handleClick(key: string): void {
     <div v-if="!collapsed" class="xui-scrim" @click="collapsed = true" />
 
     <a-layout class="xui-main">
-      <header class="xui-topbar">
+      <!-- 同理：<section> 里的 <header> 也拿不到 banner 地标，标题会落在地标外。 -->
+      <header class="xui-topbar" role="banner">
         <button
           class="xui-topbar__toggle"
           type="button"
@@ -129,7 +145,8 @@ function handleClick(key: string): void {
         <span class="xui-topbar__version">x-ui {{ boot.version }}</span>
       </header>
 
-      <a-layout-content class="xui-content">
+      <!-- tabindex=-1 让锚点跳转真的把焦点也带过来，而不只是滚动。 -->
+      <a-layout-content :id="CONTENT_ID" class="xui-content" tabindex="-1">
         <slot />
       </a-layout-content>
     </a-layout>

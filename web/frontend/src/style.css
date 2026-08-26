@@ -47,6 +47,11 @@
   /* 表格里钉住的操作列必须挡住从下面滚过去的内容。 */
   --xui-fixed-cell-bg: rgba(13, 18, 34, 0.94);
 
+  /* 链接色与键盘焦点环。与 theme.ts 的 colorLink / colorPrimaryBorder 同值。 */
+  --xui-link: #8ea6ff;
+  --xui-link-hover: #b7c6ff;
+  --xui-focus: #8ea6ff;
+
   --xui-shadow: 0 18px 40px rgba(3, 6, 16, 0.45);
   --xui-shadow-lg: 0 28px 70px rgba(3, 6, 16, 0.55);
 
@@ -146,6 +151,66 @@ body::after {
 
 .xui-glass > * {
   position: relative;
+}
+
+/* ------------------------------------------------------------------ *
+ * 键盘焦点
+ * ------------------------------------------------------------------ */
+
+/*
+  antd 自己的组件由 theme.ts 的 colorPrimaryBorder 管焦点环，但页面上还有一批
+  不是 antd 的可聚焦元素：顶栏的折叠按钮、品牌链接、表格与卡片里的操作 <a>、
+  下面那条跳转链接。它们要么完全没有焦点样式，要么被 antd 的 `a:focus{outline:0}`
+  抹掉了 —— 只用键盘的人根本看不出光标停在哪一行的哪个操作上。
+
+  只挑 :focus-visible：鼠标点一下不该留下一圈环。
+  本文件是 <link>，排在 antd 运行时注入的 <style> 之后（后者用 prepend 插在
+  <head> 顶部），所以同权重时这里生效，不需要 !important。
+*/
+a:focus-visible,
+button:focus-visible,
+input:focus-visible,
+select:focus-visible,
+summary:focus-visible,
+textarea:focus-visible,
+[tabindex]:focus-visible {
+  outline: 2px solid var(--xui-focus);
+  outline-offset: 2px;
+  border-radius: 6px;
+}
+
+/*
+  跳到主要内容。
+
+  侧边栏有十来个菜单项，每次用 Tab 进页面都要先走完它们才能碰到内容区里的
+  控件。这条链接平时移出视口，一拿到焦点就落到左上角。
+*/
+.xui-skip {
+  position: fixed;
+  top: 10px;
+  inset-inline-start: 10px;
+  z-index: 200;
+  padding: 9px 16px;
+  border-radius: 12px;
+  background: var(--xui-elevated-bg);
+  border: 1px solid var(--xui-glass-border);
+  box-shadow: var(--xui-shadow);
+  color: var(--xui-text);
+  font-size: 13px;
+  font-weight: 550;
+  text-decoration: none;
+  /* 用位移而不是 display:none —— 后者会把它从 Tab 顺序里一起摘掉。 */
+  transform: translateY(calc(-100% - 20px));
+}
+
+.xui-skip:focus-visible {
+  transform: none;
+}
+
+/* 跳转落点自身不该亮起焦点环：环是给键盘导航看的，这里只是滚动目标。 */
+.xui-content:focus,
+.xui-content:focus-visible {
+  outline: none;
 }
 
 /* ------------------------------------------------------------------ *
@@ -666,6 +731,31 @@ body::after {
   background: rgba(251, 113, 133, 0.12);
 }
 
+/*
+  表格行与手机卡片里的那排操作。
+
+  它们本来是 <a @click="...">。没有 href 的锚点既不进 Tab 顺序，也不会被辅助
+  技术报成链接 —— 于是"查看 / 客户端 / 二维码 / 编辑 / 重置流量 / 删除"这一
+  整排操作，对只用键盘的人等于不存在（用 Tab 走一遍入站页可以验证：焦点从
+  "添加入站"直接跳到了每行的启用开关，中间六个操作一个都碰不到）。
+
+  换成 <button> 就都有了：可聚焦、回车与空格都能触发、语义也对。外观这里补回
+  一条链接的样子。
+*/
+.xui-link-btn {
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--xui-link);
+  font: inherit;
+  cursor: pointer;
+  transition: color var(--xui-dur) var(--xui-ease);
+}
+
+.xui-link-btn:hover {
+  color: var(--xui-link-hover);
+}
+
 .xui-danger-link {
   color: var(--xui-danger);
 }
@@ -962,6 +1052,15 @@ body::after {
 
 .ant-tabs > .ant-tabs-nav::before {
   border-bottom-color: var(--xui-glass-border-soft);
+}
+
+/*
+  选中标签的文字，antd 直接用 colorPrimary（#4361ee）。那是给按钮做底色的
+  蓝，不是给文字用的：压在磨砂标签背景上只有 3:1 出头，是全站唯一一处过不了
+  WCAG AA 的文本。选中态本来还有底色和高亮条在标示，不必再靠色相区分。
+*/
+.ant-tabs .ant-tabs-tab.ant-tabs-tab-active .ant-tabs-tab-btn {
+  color: var(--xui-text);
 }
 
 /* --- 表单控件 --- */
