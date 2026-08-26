@@ -22,6 +22,43 @@
 
 ---
 
+# 《Round 3 — O1 交付：H2 窗口 + 事件驱动重启》
+
+## 已关闭
+
+- **H2 停核前 drain**：`StopCore` / `RestartCore` 在杀掉进程前先
+  `GetTraffic(true)` 并把 inbound + client 两个维度落库
+  （`web/service/core.go` `drainTraffic`）。以前每次改入站、客户端到期、
+  面板停机都会让全体在线用户白嫖最多一整轮（10s）配额。
+- **关机 flush pending**：`CoreTrafficJob.Flush` 在 `web.Server.Stop` 里
+  被调用一次（cron 排空 → StopCore → Flush）。
+- **N1 core down 时不 flush**：`Run` 不再在探活门那里掉头，缓冲里的增量
+  与内核死活无关。
+- **waitDone 事件驱动**：`core.Core.Done()` 暴露子进程退出通道，
+  `CoreService.watchCoreExit` 在退出瞬间举起重启标志。主动停机与
+  已被换掉的实例都被挡掉；标志仍由 `RestartCoreIfNeeded` 在退避后消费，
+  崩溃循环的节奏一点没变（10s → 20s → 40s…）。`CheckCoreRunningJob`
+  降级为兜底。
+- **N3 锁粒度**：drain 在 `state.mu` 之外做。它带一次 gRPC 往返
+  （上限 `statsQueryTimeout` 10s）加一次写事务，占着锁做会把
+  `/healthz`、状态接口和 Prometheus 抓取一起拖住；拿到锁之后重新判定
+  一次"配置没变就跳过"，并发重启不会变成双重启。
+
+## 仍开放（残留窗口，需内核配合）
+
+- 真正的 persist-then-reset 做不了：sing-box 的 `QueryStats` 只有
+  reset-on-read，没有"读了再确认"的二段接口。面板进程在内核清零与
+  提交事务之间被 SIGKILL，那批字节仍然会丢。现在的兜底是内存重投缓冲
+  （封顶 4096 键，按字节数保大丢小）加上停机时的两次强制落库。
+
+## 验证
+
+`go build ./...`（含 `CGO_ENABLED=0`）、`go vet ./...`、`gofmt -l`、
+`go test ./...`、`go test -race ./...` 全绿。drain 与 N1 两组用例都做过
+变异验证：把修复摘掉即失败。
+
+---
+
 # 《Round 2 结论简报》
 
 ## 演进对比
