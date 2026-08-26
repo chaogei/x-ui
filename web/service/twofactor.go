@@ -266,12 +266,20 @@ func (s *TwoFactorService) Verify(userID int, code string) (usedRecoveryCode boo
 	if step, ok := validateTOTP(secret, code, time.Now()); ok {
 		// 同一个时间步里的码只认一次。TOTP 在整整 30 秒内都有效，
 		// 不记游标的话，肩窥或中间人拿到的码可以在窗口内被重放。
+		//
+		// 游标的推进必须由数据库来裁决，理由和找回码那边一模一样：
+		// 两个请求带着同一个码同时进来，都会读到同一个旧游标，
+		// 都判定"比它大"，然后都放行。把比较写进 WHERE，只有一条
+		// UPDATE 能命中，另一条 RowsAffected 为 0 —— 那就是重放。
 		if step <= record.LastUsedStep {
 			return false, ErrTwoFactorInvalidCode
 		}
-		if err := database.GetDB().Model(model.TwoFactor{}).Where("id = ?", record.Id).
-			Update("last_used_step", step).Error; err != nil {
+		consumed, err := s.consumeTOTPStep(record.Id, step)
+		if err != nil {
 			return false, err
+		}
+		if !consumed {
+			return false, ErrTwoFactorInvalidCode
 		}
 		return false, nil
 	}
@@ -312,6 +320,20 @@ func (s *TwoFactorService) Disable(userID int, username, password, code string) 
 		}
 		return tx.Where("user_id = ?", userID).Delete(model.TwoFactor{}).Error
 	})
+}
+
+// consumeTOTPStep 把重放游标推进到 step，返回这次推进是否由本调用完成。
+//
+// 条件写在 WHERE 里：last_used_step < step 的行只存在一次，抢到它的那条
+// UPDATE 就是唯一被承认的登录。
+func (s *TwoFactorService) consumeTOTPStep(recordID int, step int64) (bool, error) {
+	result := database.GetDB().Model(model.TwoFactor{}).
+		Where("id = ? and last_used_step < ?", recordID, step).
+		Update("last_used_step", step)
+	if result.Error != nil {
+		return false, result.Error
+	}
+	return result.RowsAffected == 1, nil
 }
 
 // consumeRecoveryCode 消费一张找回码，返回它是否有效。

@@ -195,6 +195,128 @@ func TestVerifyRefusesToReplayTheSameCode(t *testing.T) {
 	}
 }
 
+// consumeTOTPStep 是重放保护的裁决点，这里直接把它的契约钉死：
+// 一个时间步只能被消费一次，且游标只能前进。
+//
+// 通过并发用例很难稳定复现这条——SQLite 把写串行化了，读到旧游标的窗口
+// 只有几微秒。所以规则在这里断言，交错在下面的用例里断言。
+func TestConsumeTOTPStepOnlyMovesForward(t *testing.T) {
+	testutil.InitDB(t)
+	user := firstUser(t)
+	s := &TwoFactorService{}
+	enroll(t, s, user)
+
+	record, err := s.get(user.Id)
+	if err != nil {
+		t.Fatalf("read the two-factor record: %v", err)
+	}
+
+	// 确认注册已经消费掉了当前时间步，所以从游标当前值往后取。
+	base := record.LastUsedStep
+	cases := []struct {
+		name string
+		step int64
+		want bool
+	}{
+		{"a fresh step is consumed", base + 10, true},
+		{"the same step cannot be consumed twice", base + 10, false},
+		{"an older step cannot rewind the cursor", base + 9, false},
+		{"the next step is consumed", base + 11, true},
+	}
+	for _, tc := range cases {
+		got, err := s.consumeTOTPStep(record.Id, tc.step)
+		if err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		if got != tc.want {
+			t.Errorf("%s: consumeTOTPStep(%d) = %v, want %v", tc.name, tc.step, got, tc.want)
+		}
+	}
+
+	reloaded, err := s.get(user.Id)
+	if err != nil {
+		t.Fatalf("reload the two-factor record: %v", err)
+	}
+	if reloaded.LastUsedStep != base+11 {
+		t.Errorf("last_used_step = %d, want %d", reloaded.LastUsedStep, base+11)
+	}
+}
+
+// 顺序重放挡住了，并发重放也必须挡住：两个请求带着同一个码同时进来时，
+// "先读游标再判断再写"会让两条都通过——它们读到的是同一个旧游标。
+// 判定条件必须由数据库裁决（WHERE last_used_step < ?），和找回码一个套路。
+func TestVerifyRejectsConcurrentReplay(t *testing.T) {
+	testutil.InitDB(t)
+	user := firstUser(t)
+	s := &TwoFactorService{}
+	secret, _ := enroll(t, s, user)
+	clearReplayCursor(t, user.Id)
+
+	code := currentCode(t, secret)
+
+	const attempts = 8
+	start := make(chan struct{})
+	results := make(chan error, attempts)
+	for i := 0; i < attempts; i++ {
+		go func() {
+			<-start
+			_, err := s.Verify(user.Id, code)
+			results <- err
+		}()
+	}
+	close(start)
+
+	accepted := 0
+	for i := 0; i < attempts; i++ {
+		switch err := <-results; {
+		case err == nil:
+			accepted++
+		case errors.Is(err, ErrTwoFactorInvalidCode):
+		default:
+			t.Errorf("verify returned an unexpected error: %v", err)
+		}
+	}
+	if accepted != 1 {
+		t.Errorf("%d of %d concurrent uses of the same code were accepted, want exactly 1",
+			accepted, attempts)
+	}
+}
+
+// 并发消费同一张找回码同样只能有一次成功，这条规矩不能在重构里丢掉。
+func TestRecoveryCodeSurvivesConcurrentUse(t *testing.T) {
+	testutil.InitDB(t)
+	user := firstUser(t)
+	s := &TwoFactorService{}
+	_, codes := enroll(t, s, user)
+
+	const attempts = 8
+	start := make(chan struct{})
+	results := make(chan error, attempts)
+	for i := 0; i < attempts; i++ {
+		go func() {
+			<-start
+			_, err := s.Verify(user.Id, codes[0])
+			results <- err
+		}()
+	}
+	close(start)
+
+	accepted := 0
+	for i := 0; i < attempts; i++ {
+		switch err := <-results; {
+		case err == nil:
+			accepted++
+		case errors.Is(err, ErrTwoFactorInvalidCode):
+		default:
+			t.Errorf("verify returned an unexpected error: %v", err)
+		}
+	}
+	if accepted != 1 {
+		t.Errorf("%d of %d concurrent uses of one recovery code were accepted, want exactly 1",
+			accepted, attempts)
+	}
+}
+
 func TestRecoveryCodesAreSingleUse(t *testing.T) {
 	testutil.InitDB(t)
 	user := firstUser(t)
