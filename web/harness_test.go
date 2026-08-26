@@ -154,8 +154,8 @@ func newPanel(t *testing.T, opts ...panelOption) *panel {
 
 	server := NewServer()
 	global.SetWebServer(server)
-	// cron 只建不启动：入站控制器会往上挂"每 10 秒检查是否需要重启内核"的任务，
-	// 真跑起来会去 fork 一个测试环境里并不存在的 sing-box。
+	// cron 只建不启动：这里只走 initRouter 而不走 startTask，所以上面什么
+	// 任务都没有；建出来是因为若干代码路径会取用它，启动它则毫无必要。
 	server.cron = cron.New(cron.WithSeconds())
 	t.Cleanup(func() { server.cron.Stop() })
 

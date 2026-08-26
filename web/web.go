@@ -422,11 +422,12 @@ func (s *Server) Start() (err error) {
 // 等价于立即强制关闭，正在处理的请求会被直接掐断，"优雅"二字名存实亡。
 // 现在改为：排空请求（最多 shutdownTimeout）之后才 cancel 服务级 context。
 func (s *Server) Stop() error {
-	_ = s.coreService.StopCore()
+	// 定时任务必须先停干净再停内核。反过来的话，一个恰好在跑的重启任务
+	// 会在 StopCore 之后把 sing-box 又拉起来，留下一个没人管的子进程。
+	//
+	// cron.Stop 只保证不再触发新任务，正在跑的还在跑；它返回的 context
+	// 在这些任务全部结束时关闭。
 	if s.cron != nil {
-		// cron.Stop 只保证不再触发新任务，正在跑的还在跑。返回的 context
-		// 在它们全部结束时关闭——必须等一下，否则一个正在写库的流量任务
-		// 会撞上随后被关掉的连接池。
 		stopped := s.cron.Stop()
 		select {
 		case <-stopped.Done():
@@ -434,6 +435,7 @@ func (s *Server) Stop() error {
 			logger.Warning("background jobs did not finish within", cronDrainTimeout)
 		}
 	}
+	_ = s.coreService.StopCore()
 
 	var err1 error
 	var err2 error

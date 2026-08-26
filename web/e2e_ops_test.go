@@ -4,6 +4,7 @@ import (
 	"net"
 	"net/url"
 	"strconv"
+	"sync"
 	"testing"
 	"time"
 
@@ -84,6 +85,50 @@ func TestE2EGracefulShutdown(t *testing.T) {
 	// 排空完成之后服务级 context 才该被取消。
 	if server.GetCtx().Err() == nil {
 		t.Error("the server context should be cancelled once Stop returns")
+	}
+}
+
+// TestE2EStopDrainsRunningJobs 覆盖后台任务的排空。
+//
+// cron.Stop 只保证不再触发新任务，正在跑的还在跑。不等它们收尾就往下走，
+// 一个正在写库的流量任务会撞上随后被关掉的连接池；更糟的是恰好在跑的
+// 重启任务会在 StopCore 之后把 sing-box 又拉起来，留下一个没人管的子进程。
+func TestE2EStopDrainsRunningJobs(t *testing.T) {
+	newBareDB(t)
+	writeSetting(t, "webPort", "0")
+
+	server := NewServer()
+	global.SetWebServer(server)
+	if err := server.Start(); err != nil {
+		t.Fatalf("start panel: %v", err)
+	}
+
+	var once sync.Once
+	started := make(chan struct{})
+	finished := make(chan struct{})
+	if _, err := server.GetCron().AddFunc("@every 1s", func() {
+		once.Do(func() {
+			close(started)
+			time.Sleep(300 * time.Millisecond)
+			close(finished)
+		})
+	}); err != nil {
+		t.Fatalf("add probe job: %v", err)
+	}
+
+	select {
+	case <-started:
+	case <-time.After(5 * time.Second):
+		t.Fatal("the probe job never ran")
+	}
+
+	if err := server.Stop(); err != nil {
+		t.Fatalf("stop panel: %v", err)
+	}
+	select {
+	case <-finished:
+	default:
+		t.Error("Stop returned while a background job was still in flight")
 	}
 }
 
