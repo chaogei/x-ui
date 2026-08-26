@@ -243,3 +243,16 @@
 "setting_web_trusted_proxies" = "受信任代理網段"
 "setting_web_trusted_proxies_desc" = "面板前置反向代理的 CIDR 清單，以逗號分隔。留空（建議）表示完全忽略 X-Forwarded-For，用戶端 IP 取 TCP 對端位址。"
 "proto_reality_gen_keys" = "產生金鑰對"
+
+# ------- 多使用者用戶端 -------
+"op_reset_traffic" = "重設流量"
+"op_rotate_token" = "重設訂閱連結"
+
+# ------- 兩步驗證（伺服端） -------
+"op_2fa_enroll" = "開始設定兩步驗證"
+"op_2fa_enable" = "啟用兩步驗證"
+"op_2fa_disable" = "關閉兩步驗證"
+"auth_totp_required" = "請輸入驗證器 App 上的動態驗證碼"
+"auth_totp_invalid" = "驗證碼不正確"
+"auth_totp_unavailable" = "暫時無法驗證兩步驗證，請重試"
+"login_totp_code" = "動態驗證碼（未啟用兩步驗證請留空）"

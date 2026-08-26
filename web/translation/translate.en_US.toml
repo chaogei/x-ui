@@ -243,3 +243,16 @@
 "setting_web_trusted_proxies" = "Trusted proxy CIDRs"
 "setting_web_trusted_proxies_desc" = "Comma-separated CIDRs of reverse proxies in front of the panel. Empty (recommended) means X-Forwarded-For is ignored entirely and the client IP is the TCP peer address."
 "proto_reality_gen_keys" = "Generate key pair"
+
+# ------- Multi-user clients -------
+"op_reset_traffic" = "Reset traffic"
+"op_rotate_token" = "Rotate subscription token"
+
+# ------- Two-factor authentication (server side) -------
+"op_2fa_enroll" = "Start two-factor setup"
+"op_2fa_enable" = "Enable two-factor authentication"
+"op_2fa_disable" = "Disable two-factor authentication"
+"auth_totp_required" = "Enter the code from your authenticator app"
+"auth_totp_invalid" = "That verification code is not valid"
+"auth_totp_unavailable" = "Two-factor authentication cannot be verified right now, please retry"
+"login_totp_code" = "Verification code (only if two-factor is enabled)"

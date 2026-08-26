@@ -247,3 +247,16 @@
 "setting_web_trusted_proxies" = "受信代理网段"
 "setting_web_trusted_proxies_desc" = "面板前置反向代理的 CIDR 列表，逗号分隔。留空（推荐）表示完全忽略 X-Forwarded-For，客户端 IP 取 TCP 对端地址。"
 "proto_reality_gen_keys" = "生成密钥对"
+
+# ------- 多用户客户端 -------
+"op_reset_traffic" = "重置流量"
+"op_rotate_token" = "重置订阅链接"
+
+# ------- 两步验证（服务端） -------
+"op_2fa_enroll" = "开始设置两步验证"
+"op_2fa_enable" = "启用两步验证"
+"op_2fa_disable" = "关闭两步验证"
+"auth_totp_required" = "请输入验证器 App 上的动态验证码"
+"auth_totp_invalid" = "验证码不正确"
+"auth_totp_unavailable" = "暂时无法校验两步验证，请重试"
+"login_totp_code" = "动态验证码（未开启两步验证请留空）"

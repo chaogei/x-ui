@@ -7,6 +7,7 @@ package random
 import (
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"math/big"
 )
 
@@ -18,17 +19,28 @@ const alphabet = "0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ
 // 采用 crypto/rand.Int 做无偏采样（拒绝取模偏置）。
 // n <= 0 返回空串；熵源不可用时返回错误，调用方必须处理而不是静默降级。
 func Seq(n int) (string, error) {
+	return SeqFrom(n, alphabet)
+}
+
+// SeqFrom 与 Seq 相同，但由调用方指定字符集。
+//
+// 用于那些需要人工抄写的串（例如两步验证的找回码）：它们要避开
+// 0/O、1/l 这类形近字符，而这个取舍不该强加给所有随机串。
+func SeqFrom(n int, charset string) (string, error) {
 	if n <= 0 {
 		return "", nil
 	}
-	max := big.NewInt(int64(len(alphabet)))
+	if len(charset) < 2 {
+		return "", errors.New("charset must have at least two characters")
+	}
+	max := big.NewInt(int64(len(charset)))
 	buf := make([]byte, n)
 	for i := 0; i < n; i++ {
 		idx, err := rand.Int(rand.Reader, max)
 		if err != nil {
 			return "", err
 		}
-		buf[i] = alphabet[idx.Int64()]
+		buf[i] = charset[idx.Int64()]
 	}
 	return string(buf), nil
 }

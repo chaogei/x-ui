@@ -145,6 +145,14 @@ func initClient() error {
 	return db.AutoMigrate(&model.Client{})
 }
 
+// initTwoFactor 建立两步验证相关的两张表。
+func initTwoFactor() error {
+	if err := db.AutoMigrate(&model.TwoFactor{}); err != nil {
+		return err
+	}
+	return db.AutoMigrate(&model.RecoveryCode{})
+}
+
 func InitDB(dbPath string) error {
 	dir := path.Dir(dbPath)
 	if err := os.MkdirAll(dir, dbDirPerm); err != nil {
@@ -183,6 +191,9 @@ func InitDB(dbPath string) error {
 		return err
 	}
 	if err := initClient(); err != nil {
+		return err
+	}
+	if err := initTwoFactor(); err != nil {
 		return err
 	}
 

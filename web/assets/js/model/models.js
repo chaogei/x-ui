@@ -3,6 +3,8 @@ class User {
     constructor() {
         this.username = "";
         this.password = "";
+        // 只有账号开启了两步验证时才会用到；为空时服务端直接忽略。
+        this.twoFactorCode = "";
     }
 }
 
