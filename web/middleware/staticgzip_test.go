@@ -7,6 +7,7 @@ import (
 	"net/http/httptest"
 	"strconv"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/gin-gonic/gin"
@@ -190,6 +191,36 @@ func TestStaticGzipCacheServesTheSameBytes(t *testing.T) {
 	if got := gunzip(t, second); got != bundle {
 		t.Errorf("the cached copy decompresses to %d bytes, want %d", len(got), len(bundle))
 	}
+}
+
+// 面板刚起来的时候，第一批访客会同时打到同一个文件上——缓存正是在那一刻
+// 从空变满的。这条用例在 -race 下跑才有意义。
+func TestStaticGzipCacheIsRaceFree(t *testing.T) {
+	engine := gzipEngine(true)
+
+	var wg sync.WaitGroup
+	for i := 0; i < 16; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			rec := fetch(engine, http.MethodGet, "/assets/dist/xui.js",
+				[2]string{"Accept-Encoding", acceptsGzip})
+			if enc := rec.Header().Get("Content-Encoding"); enc != "gzip" {
+				t.Errorf("Content-Encoding = %q under concurrency", enc)
+				return
+			}
+			zr, err := gzip.NewReader(rec.Body)
+			if err != nil {
+				t.Errorf("concurrent response does not decode: %v", err)
+				return
+			}
+			plain, err := io.ReadAll(zr)
+			if err != nil || string(plain) != bundle {
+				t.Errorf("concurrent response decompressed to %d bytes (%v), want %d", len(plain), err, len(bundle))
+			}
+		}()
+	}
+	wg.Wait()
 }
 
 func TestGzipCacheRejectsAStaleEntry(t *testing.T) {
