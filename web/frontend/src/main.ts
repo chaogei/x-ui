@@ -8,7 +8,35 @@
  * 页面身份由后端注入（window.__XUI__.page），不靠解析 location.pathname —— 
  * 后者在自定义 basePath 下就会认错。
  */
-import Antd, { ConfigProvider } from 'ant-design-vue'
+import {
+  Alert,
+  Button,
+  Card,
+  Col,
+  ConfigProvider,
+  DatePicker,
+  Divider,
+  Drawer,
+  Form,
+  Input,
+  InputNumber,
+  Layout,
+  List,
+  Menu,
+  Modal,
+  Progress,
+  Radio,
+  Row,
+  Select,
+  Space,
+  Spin,
+  Switch,
+  Table,
+  Tabs,
+  Tag,
+  Tooltip,
+  Typography,
+} from 'ant-design-vue'
 import { createApp } from 'vue'
 
 import 'ant-design-vue/dist/reset.css'
@@ -30,7 +58,54 @@ import { glassTheme } from './theme'
 // 只有类型声明落后，运行时是通的。
 ConfigProvider.config({ theme: glassTheme } as unknown as Parameters<typeof ConfigProvider.config>[0])
 
+/*
+ * 逐个注册用到的组件，而不是 app.use(Antd)。
+ *
+ * 后者的 install 会挨个引用库里的每一个组件，于是 rollup 判定"全都用得上"，
+ * tree-shaking 整个失效 —— 面板只用了二十来个组件，却把 upload / calendar /
+ * cascader / tour 这些一次也没出现过的东西一并打了进来。
+ *
+ * 每个组件自己的 install 会把它的子组件也注册上（Input 带 Textarea 与
+ * Password，Layout 带 Sider/Content，Menu 带 MenuItem/SubMenu，Select 带
+ * Option，Typography 带 Link/Text/Paragraph，Tabs 带 TabPane，List 带
+ * Item/Item.Meta，Radio 带 Group/Button，Form 带 FormItem），所以模板里的
+ * <a-textarea>、<a-menu-item> 这类标签不需要单独列出来。
+ *
+ * 新增标签时要么在这里补一行，要么确认它是上面某个组件的子组件；漏了的话
+ * Vue 会在控制台报"unknown custom element"，e2e_render_test.go 的 jsdom
+ * 用例把 console.error 当失败处理，会当场把它挡下来。
+ */
 const app = createApp(App)
-app.use(Antd)
+for (const component of [
+  Alert,
+  Button,
+  Card,
+  Col,
+  ConfigProvider,
+  DatePicker,
+  Divider,
+  Drawer,
+  Form,
+  Input,
+  InputNumber,
+  Layout,
+  List,
+  Menu,
+  Modal,
+  Progress,
+  Radio,
+  Row,
+  Select,
+  Space,
+  Spin,
+  Switch,
+  Table,
+  Tabs,
+  Tag,
+  Tooltip,
+  Typography,
+]) {
+  app.use(component)
+}
 app.config.globalProperties.$boot = boot
 app.mount('#app')
