@@ -156,9 +156,14 @@ usePolling(refresh, { interval: 2000 })
           <article v-for="g in gauges" :key="g.key" class="xui-tile xui-tile--gauge xui-glass">
             <span class="xui-tile__label">{{ g.label }}</span>
             <div class="xui-tile__gauge">
+              <!--
+                仪表渲染成 role=progressbar，但可见的标题在它外面，屏幕阅读器
+                只会念出一个没有名字的进度条。这里把标题挂上去。
+              -->
               <a-progress
                 type="dashboard"
                 :size="118"
+                :aria-label="g.label"
                 :stroke-color="gaugeColor(g.percent)"
                 trail-color="rgba(255, 255, 255, 0.1)"
                 :percent="g.percent"

@@ -72,7 +72,13 @@ function handleClick(key: string): void {
       :collapsed-width="0"
       :width="240"
     >
-      <div class="xui-sider__inner">
+      <!--
+        导航地标标在这个 div 上而不是外面那个 <aside>：<aside> 嵌在 <section>
+        （antd 的 Layout）里时不会自动成为地标，于是品牌区和整份菜单都被算作
+        "游离在地标之外的内容"；而给 <aside> 加 role=navigation 又是一个不被
+        允许的角色组合。
+      -->
+      <div class="xui-sider__inner" role="navigation">
         <a class="xui-brand" :href="panelUrl('xui/')">
           <span class="xui-brand__mark" aria-hidden="true">x</span>
           <span class="xui-brand__text">
@@ -122,7 +128,8 @@ function handleClick(key: string): void {
     <div v-if="!collapsed" class="xui-scrim" @click="collapsed = true" />
 
     <a-layout class="xui-main">
-      <header class="xui-topbar">
+      <!-- 同理：<section> 里的 <header> 也拿不到 banner 地标，标题会落在地标外。 -->
+      <header class="xui-topbar" role="banner">
         <button
           class="xui-topbar__toggle"
           type="button"

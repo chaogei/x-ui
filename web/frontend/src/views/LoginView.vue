@@ -41,7 +41,8 @@ async function login(): Promise<void> {
 </script>
 
 <template>
-  <div class="xui-login">
+  <!-- <main>：登录页没有 AppShell，不写的话整页没有任何地标。 -->
+  <main class="xui-login">
     <div class="xui-login__card xui-glass">
       <div class="xui-login__brand">
         <span class="xui-brand__mark" aria-hidden="true">x</span>
@@ -100,5 +101,5 @@ async function login(): Promise<void> {
     </div>
 
     <p class="xui-login__foot">x-ui {{ boot.version }}</p>
-  </div>
+  </main>
 </template>

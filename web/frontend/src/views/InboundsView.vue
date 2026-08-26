@@ -283,7 +283,11 @@ onBeforeUnmount(() => {
     <div v-if="narrow" class="xui-cards">
       <article v-for="row in dbInbounds" :key="row.id" class="xui-card-row xui-glass">
         <header class="xui-card-row__head">
-          <a-switch :checked="row.enable" @change="(v: any) => { row.enable = !!v; saveRow(row) }" />
+          <a-switch
+            :checked="row.enable"
+            :aria-label="`${t('enable')} — ${row.remark || '#' + row.id}`"
+            @change="(v: any) => { row.enable = !!v; saveRow(row) }"
+          />
           <span class="xui-card-row__name">{{ row.remark || '#' + row.id }}</span>
           <a-tag color="blue">{{ row.protocol }}</a-tag>
         </header>
@@ -343,7 +347,16 @@ onBeforeUnmount(() => {
         </template>
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'enable'">
-            <a-switch :checked="record.enable" @change="(v: any) => { record.enable = !!v; saveRow(record) }" />
+            <!--
+              开关渲染成一个没有文字的 <button>：列头那个 "enable" 不是它的
+              名字，屏幕阅读器读到的只是"按钮"。补一个带备注的标签，一列四个
+              开关才分得清哪个是哪个。
+            -->
+            <a-switch
+              :checked="record.enable"
+              :aria-label="`${t('enable')} — ${record.remark || '#' + record.id}`"
+              @change="(v: any) => { record.enable = !!v; saveRow(record) }"
+            />
           </template>
           <template v-else-if="column.key === 'protocol'">
             <a-tag color="blue">{{ record.protocol }}</a-tag>
