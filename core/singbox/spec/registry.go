@@ -26,9 +26,10 @@ var order = []string{
 // 维护要求：
 //  1. 新增协议必须同时补齐 order 列表与 registry map，二者长度必须一致（见 init 自检）
 //  2. Network 字段必须与 sing-box 实际监听传输层一致，否则端口冲突校验会错判
-//  3. UserSchema 字段决定 multi-user 展开逻辑，必须与前端 form/protocol/*.html 模板
-//     绑定的字段路径一致（例如模板里写 inbound.settings.users[0].uuid，则 Container="users",
-//     Identifier="uuid"）
+//  3. UserSchema 字段决定 multi-user 展开逻辑，必须与前端读取凭证的路径一致
+//     （web/frontend/src/models/core.ts 的 userField 与 ClientDrawer.vue）：
+//     Container="users" 表示凭证在 settings.users[0]，空串表示直接挂在 settings 顶层，
+//     Identifier 是那个字段名（例如 settings.users[0].uuid → Container="users", Identifier="uuid"）
 var registry = map[string]Spec{
 	// —— 标准代理协议 —— //
 	"vmess": {

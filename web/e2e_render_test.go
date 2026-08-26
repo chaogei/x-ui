@@ -284,7 +284,7 @@ func (r *renderSmoke) run(t *testing.T, page []byte) renderResult {
 func (r *renderSmoke) runWith(t *testing.T, page []byte, env ...string) renderResult {
 	t.Helper()
 
-	// 产物有 1.6 MB，jsdom 解析 + Vue 首轮渲染在慢机器上要几秒。
+	// 产物有 1.25 MiB，jsdom 解析 + Vue 首轮渲染在慢机器上要几秒。
 	// 给足余量，但不要无限等：挂住比失败更难查。
 	cmd := exec.Command(r.node, r.script)
 	cmd.Env = append(os.Environ(), env...)
