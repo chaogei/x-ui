@@ -4,7 +4,7 @@
  */
 import { InboxOutlined, PlusOutlined } from '@ant-design/icons-vue'
 import { Modal } from 'ant-design-vue'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
 import ClientDrawer from '../components/ClientDrawer.vue'
 import InboundInfoModal from '../components/InboundInfoModal.vue'
@@ -18,7 +18,39 @@ import { DBInbound, type DBInboundData } from '../models/inbound'
 
 const spinning = ref(false)
 const dbInbounds = ref<DBInbound[]>([])
-const inbounds = ref<Inbound[]>([])
+
+/**
+ * 每行的传输层摘要。
+ *
+ * 表格与卡片列表只需要"transport / tls / reality"三个标签，但算出它们要把
+ * settings 那段 JSON 解析成一个完整的 Inbound。所以在 load() 里一次性算完
+ * 缓存起来，而不是：
+ *
+ *   - 放进 computed —— 拨一下某行的启用开关就会让整张表重新解析一遍 JSON；
+ *   - 在模板里现算 —— 每次重绘都解析一遍，还会造出一批新对象让 diff 全部落空。
+ *
+ * 键用 id 而不是下标：表格与卡片列表各自遍历自己的数组，靠位置对齐的第二个
+ * 数组只要有一处顺序不一致（将来加排序、过滤），标签就会挂到别人身上。
+ */
+interface StreamSummary {
+  transport: string
+  tls: boolean
+  reality: boolean
+}
+
+const NO_STREAM: StreamSummary = { transport: '', tls: false, reality: false }
+
+const streams = ref(new Map<number, StreamSummary>())
+
+function streamOf(row: DBInbound): StreamSummary {
+  return streams.value.get(row.id) ?? NO_STREAM
+}
+
+/** 卡片列表里同样三段信息，摊成一行文字。 */
+function streamLabel(row: DBInbound): string {
+  const s = streamOf(row)
+  return [s.transport, s.tls ? 'tls' : '', s.reality ? 'reality' : ''].filter(Boolean).join(' · ') || t('none')
+}
 
 const modalOpen = ref(false)
 const modalTitle = ref('')
@@ -50,8 +82,17 @@ async function load(): Promise<void> {
     return
   }
   const rows = (msg.obj ?? []).map((row) => new DBInbound(row))
+  const summaries = new Map<number, StreamSummary>()
+  for (const row of rows) {
+    const inbound = row.toInbound()
+    summaries.set(row.id, {
+      transport: inbound.transportType,
+      tls: inbound.tls,
+      reality: !!inbound.settings?.tls?.reality?.enabled,
+    })
+  }
   dbInbounds.value = rows
-  inbounds.value = rows.map((row) => row.toInbound())
+  streams.value = summaries
 }
 
 function openAdd(): void {
@@ -179,17 +220,29 @@ const columns = computed(() => [
  */
 const narrow = ref(false)
 
+let mediaQuery: MediaQueryList | undefined
+
+function onNarrowChange(e: MediaQueryListEvent | MediaQueryList): void {
+  narrow.value = e.matches
+}
+
 onMounted(() => {
   void load()
 
-  const mq = window.matchMedia?.('(max-width: 768px)')
-  if (!mq) {
+  // 断点与 style.css 里那几条窄屏规则同一个值，改一处要改两处。
+  mediaQuery = window.matchMedia?.('(max-width: 768px)')
+  if (!mediaQuery) {
     return
   }
-  narrow.value = mq.matches
-  mq.addEventListener('change', (e) => {
-    narrow.value = e.matches
-  })
+  narrow.value = mediaQuery.matches
+  mediaQuery.addEventListener('change', onNarrowChange)
+})
+
+// 监听器挂在 MediaQueryList 上，它的生命周期跟着 window 走而不是跟着组件走：
+// 不摘掉的话，卸载后的组件仍然会被回调持有，也仍然会去写它的 ref。
+onBeforeUnmount(() => {
+  mediaQuery?.removeEventListener('change', onNarrowChange)
+  mediaQuery = undefined
 })
 </script>
 
@@ -228,7 +281,7 @@ onMounted(() => {
     </div>
 
     <div v-if="narrow" class="xui-cards">
-      <article v-for="(row, index) in dbInbounds" :key="row.id" class="xui-card-row xui-glass">
+      <article v-for="row in dbInbounds" :key="row.id" class="xui-card-row xui-glass">
         <header class="xui-card-row__head">
           <a-switch :checked="row.enable" @change="(v: any) => { row.enable = !!v; saveRow(row) }" />
           <span class="xui-card-row__name">{{ row.remark || '#' + row.id }}</span>
@@ -245,17 +298,7 @@ onMounted(() => {
           </div>
           <div>
             <dt>{{ t('stream_settings') }}</dt>
-            <dd>
-              {{
-                [
-                  inbounds[index]?.transportType,
-                  inbounds[index]?.tls ? 'tls' : '',
-                  inbounds[index]?.settings?.tls?.reality?.enabled ? 'reality' : '',
-                ]
-                  .filter(Boolean)
-                  .join(' · ') || t('none')
-              }}
-            </dd>
+            <dd>{{ streamLabel(row) }}</dd>
           </div>
           <div>
             <dt>{{ t('expiry_time') }}</dt>
@@ -296,7 +339,7 @@ onMounted(() => {
             <p class="xui-empty__hint">{{ t('inbound_empty_hint') }}</p>
           </div>
         </template>
-        <template #bodyCell="{ column, record, index }">
+        <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'enable'">
             <a-switch :checked="record.enable" @change="(v: any) => { record.enable = !!v; saveRow(record) }" />
           </template>
@@ -311,10 +354,10 @@ onMounted(() => {
             <a-tag v-else color="green">{{ t('no_limit') }}</a-tag>
           </template>
           <template v-else-if="column.key === 'stream'">
-            <a-tag v-if="inbounds[index]?.transportType" color="green">{{ inbounds[index].transportType }}</a-tag>
-            <a-tag v-if="inbounds[index]?.tls" color="blue">tls</a-tag>
-            <a-tag v-if="inbounds[index]?.settings?.tls?.reality?.enabled" color="purple">reality</a-tag>
-            <span v-if="!inbounds[index]?.transportType && !inbounds[index]?.tls">{{ t('none') }}</span>
+            <a-tag v-if="streamOf(record).transport" color="green">{{ streamOf(record).transport }}</a-tag>
+            <a-tag v-if="streamOf(record).tls" color="blue">tls</a-tag>
+            <a-tag v-if="streamOf(record).reality" color="purple">reality</a-tag>
+            <span v-if="!streamOf(record).transport && !streamOf(record).tls">{{ t('none') }}</span>
           </template>
           <template v-else-if="column.key === 'expiryTime'">
             <a-tag v-if="record.expiryTime > 0" :color="record.isExpiry ? 'red' : 'blue'">
