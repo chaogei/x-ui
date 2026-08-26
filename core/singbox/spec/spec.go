@@ -1,8 +1,8 @@
 // Package spec 定义 sing-box 协议元数据的单一来源（Single Source of Truth）。
 //
 // 设计目标：
-//  1. 把散落在前端（core.js / models.js）与后端（model.Protocol 方法）的协议
-//     元数据集中到一个权威位置，让"新增协议 / 调整分类"只需改此包。
+//  1. 把散落在前端（web/frontend/src/models）与后端（model.Protocol 方法）的
+//     协议元数据集中到一个权威位置，让"新增协议 / 调整分类"只需改此包。
 //  2. 保持零外部依赖，仅输出数据结构；model 层与 web 层按需消费。
 //  3. 字段命名与 sing-box 配置保持一致，便于直接序列化为 JSON 供前端消费。
 //

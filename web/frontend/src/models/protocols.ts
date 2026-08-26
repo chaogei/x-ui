@@ -2,7 +2,7 @@
  * protocols.ts —— sing-box 协议元数据的前端入口。
  *
  * 设计要点：
- *   1. 协议列表的单一来源是后端 core/singbox/spec，经 head.html 注入到
+ *   1. 协议列表的单一来源是后端 core/singbox/spec，经 app.html 注入到
  *      window.__XUI__.protocols（boot.protocols）。这里只消费，不硬编码。
  *   2. 后端给静态元数据（key / network / is_endpoint / shareable / users），
  *      前端补"带随机值、依赖前端类型"的部分 —— 即每种协议的 defaults() 工厂。

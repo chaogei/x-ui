@@ -1,7 +1,8 @@
 /**
  * boot.ts —— 服务端注入数据的唯一读取点。
  *
- * 后端在每个页面的 <head> 里写一行 `window.__XUI__ = {...}`（见 web/html/common/head.html）。
+ * 后端在每个页面的 <head> 里写一行 `window.__XUI__ = {...}`（见 web/html/app.html
+ * 与 web/controller/util.go 的 html()）。
  * 之所以注入而不是让前端再发几个 XHR：
  *   - CSRF token 必须在第一个写请求之前就位，异步拉取会有时序窗口；
  *   - i18n 词典的单一来源是后端的 translation/*.toml，前端再维护一份必然漂移；

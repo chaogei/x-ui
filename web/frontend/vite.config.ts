@@ -7,7 +7,7 @@ import { defineConfig } from 'vite'
 //
 // 文件名固定为 xui.js / xui.css 而不带内容哈希：Go 模板要静态引用它们，
 // 引入 manifest 解析只是为了一个永远只有两个条目的映射表，不划算。
-// 缓存靠 URL 上的 ?v=<面板版本号> 打破（见 web/html/common/head.html）。
+// 缓存靠 URL 上的 ?<面板版本号> 打破（见 web/html/app.html）。
 export default defineConfig({
   plugins: [vue()],
   resolve: {
