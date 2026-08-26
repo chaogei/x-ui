@@ -43,6 +43,12 @@ func TestE2EBundleIsServedCompressed(t *testing.T) {
 	if cc := resp.Header.Get("Cache-Control"); cc != "max-age=31536000" {
 		t.Errorf("Cache-Control = %q, want max-age=31536000", cc)
 	}
+	// 这是一台全新面板的第一个请求，所以 CSRF 中间件会在这条响应上建会话。
+	// 压缩层自己下发响应头，任何在它之前设置的头都必须一起走出去 —— 丢了
+	// 这个 Set-Cookie，用户就是"页面加载了但登录不上"。
+	if resp.Header.Get("Set-Cookie") == "" {
+		t.Error("the session cookie did not survive the compressed response")
+	}
 
 	zr, err := gzip.NewReader(bytes.NewReader(body))
 	if err != nil {
