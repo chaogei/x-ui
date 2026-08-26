@@ -267,6 +267,9 @@
 "unit_minute" = "分鐘"
 "unit_hour" = "小時"
 "unit_day" = "天"
+"menu_toggle" = "展開 / 收合選單"
+"inbound_empty" = "還沒有入站"
+"inbound_empty_hint" = "新增第一個入站之後，流量、到期時間與用戶端都會顯示在這裡。"
 
 # ------- 多使用者用戶端（介面） -------
 "client_list" = "用戶端"

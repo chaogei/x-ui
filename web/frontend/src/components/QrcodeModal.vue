@@ -52,9 +52,12 @@ async function copy(): Promise<void> {
     :footer="null"
     @update:open="(v: boolean) => emit('update:open', v)"
   >
-    <div style="text-align: center">
-      <img v-if="dataUrl" :src="dataUrl" :alt="title" style="max-width: 100%" />
-      <a-typography-paragraph copyable :content="text" style="word-break: break-all; margin-top: 12px" />
+    <!-- 二维码必须落在白底上：暗色玻璃背后扫码器读不出来。 -->
+    <div class="xui-qr">
+      <div v-if="dataUrl" class="xui-qr__frame">
+        <img :src="dataUrl" :alt="title" />
+      </div>
+      <a-typography-paragraph copyable :content="text" style="word-break: break-all; margin: 0" />
       <a-button @click="copy">{{ t('info_copy_link') }}</a-button>
     </div>
   </a-modal>

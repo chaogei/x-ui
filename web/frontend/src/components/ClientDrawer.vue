@@ -194,7 +194,15 @@ const columns = computed(() => [
       </a-space>
       <a-alert type="info" show-icon :message="t('client_traffic_note')" style="margin-bottom: 12px" />
 
-      <a-table :columns="columns" :data-source="clients" :loading="loading" row-key="id" :pagination="false" size="small">
+      <a-table
+        class="xui-table"
+        :columns="columns"
+        :data-source="clients"
+        :loading="loading"
+        row-key="id"
+        :pagination="false"
+        size="small"
+      >
         <template #bodyCell="{ column, record }">
           <template v-if="column.key === 'enable'">
             <a-tag :color="record.enable ? 'green' : 'red'">{{ record.enable ? t('enable') : t('disable') }}</a-tag>
@@ -220,7 +228,7 @@ const columns = computed(() => [
               <a @click="openEdit(record)">{{ t('edit') }}</a>
               <a @click="resetTraffic(record)">{{ t('reset_traffic') }}</a>
               <a @click="rotate(record)">{{ t('client_rotate_token') }}</a>
-              <a style="color: #ff4d4f" @click="remove(record)">{{ t('delete') }}</a>
+              <a class="xui-danger-link" @click="remove(record)">{{ t('delete') }}</a>
             </a-space>
           </template>
         </template>

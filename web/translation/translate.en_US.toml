@@ -267,6 +267,9 @@
 "unit_minute" = "min"
 "unit_hour" = "h"
 "unit_day" = "d"
+"menu_toggle" = "Show / hide menu"
+"inbound_empty" = "No inbounds yet"
+"inbound_empty_hint" = "Add your first inbound and its traffic, expiry and clients will show up here."
 
 # ------- Multi-user clients (UI) -------
 "client_list" = "Clients"

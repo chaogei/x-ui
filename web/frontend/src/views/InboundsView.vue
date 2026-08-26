@@ -2,7 +2,7 @@
 /**
  * InboundsView —— 入站列表 + CRUD + 每个入站下的多用户。
  */
-import { PlusOutlined } from '@ant-design/icons-vue'
+import { InboxOutlined, PlusOutlined } from '@ant-design/icons-vue'
 import { Modal } from 'ant-design-vue'
 import { computed, onMounted, ref } from 'vue'
 
@@ -177,29 +177,35 @@ onMounted(load)
       v-if="boot.initialCredentials"
       type="error"
       show-icon
-      class="xui-card"
+      style="margin-bottom: 18px"
       :message="t('warn_initial_credentials')"
     />
 
-    <a-card class="xui-card">
-      <a-row :gutter="[16, 8]">
-        <a-col :xs="24" :lg="8">
-          {{ t('total_up_down') }}:
-          <a-tag color="green">{{ sizeFormat(total.up) }} / {{ sizeFormat(total.down) }}</a-tag>
-        </a-col>
-        <a-col :xs="24" :lg="8">
-          {{ t('total_used') }}: <a-tag color="green">{{ sizeFormat(total.up + total.down) }}</a-tag>
-        </a-col>
-        <a-col :xs="24" :lg="8">
-          {{ t('inbound_count') }}: <a-tag color="green">{{ dbInbounds.length }}</a-tag>
-        </a-col>
-      </a-row>
-    </a-card>
+    <div class="xui-tiles" style="margin-bottom: 18px">
+      <article class="xui-tile xui-glass">
+        <span class="xui-tile__label">{{ t('total_up_down') }}</span>
+        <p class="xui-tile__value">{{ sizeFormat(total.up) }} / {{ sizeFormat(total.down) }}</p>
+      </article>
+      <article class="xui-tile xui-glass">
+        <span class="xui-tile__label">{{ t('total_used') }}</span>
+        <p class="xui-tile__value">{{ sizeFormat(total.up + total.down) }}</p>
+      </article>
+      <article class="xui-tile xui-glass">
+        <span class="xui-tile__label">{{ t('inbound_count') }}</span>
+        <p class="xui-tile__value">{{ dbInbounds.length }}</p>
+      </article>
+    </div>
 
-    <a-card>
-      <template #title>
-        <a-button type="primary" @click="openAdd"><template #icon><PlusOutlined /></template></a-button>
-      </template>
+    <div class="xui-toolbar xui-glass">
+      <h2 class="xui-toolbar__title">{{ t('menu_inbound_list') }}</h2>
+      <span class="xui-toolbar__spacer" />
+      <a-button type="primary" @click="openAdd">
+        <template #icon><PlusOutlined /></template>
+        {{ t('add_inbound') }}
+      </a-button>
+    </div>
+
+    <div class="xui-panel xui-panel--flush xui-glass xui-table">
       <a-table
         :columns="columns"
         :data-source="dbInbounds"
@@ -209,6 +215,13 @@ onMounted(load)
         :scroll="{ x: 1300 }"
         size="middle"
       >
+        <template #emptyText>
+          <div class="xui-empty">
+            <span class="xui-empty__mark" aria-hidden="true"><InboxOutlined /></span>
+            <p class="xui-empty__title">{{ t('inbound_empty') }}</p>
+            <p class="xui-empty__hint">{{ t('inbound_empty_hint') }}</p>
+          </div>
+        </template>
         <template #bodyCell="{ column, record, index }">
           <template v-if="column.key === 'enable'">
             <a-switch :checked="record.enable" @change="(v: any) => { record.enable = !!v; saveRow(record) }" />
@@ -242,12 +255,12 @@ onMounted(load)
               <a v-if="record.hasLink()" @click="showQrcode(record)">{{ t('qrcode') }}</a>
               <a @click="openEdit(record)">{{ t('edit') }}</a>
               <a @click="resetTraffic(record)">{{ t('reset_traffic') }}</a>
-              <a style="color: #ff4d4f" @click="remove(record)">{{ t('delete') }}</a>
+              <a class="xui-danger-link" @click="remove(record)">{{ t('delete') }}</a>
             </a-space>
           </template>
         </template>
       </a-table>
-    </a-card>
+    </div>
 
     <InboundModal
       v-model:open="modalOpen"

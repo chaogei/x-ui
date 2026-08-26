@@ -82,15 +82,15 @@ onMounted(refresh)
 <template>
   <a-card :title="t('twofa_title')">
     <a-space direction="vertical" style="width: 100%" size="middle">
-      <div>
-        {{ t('twofa_state') }}:
-        <a-tag :color="status.enabled ? 'green' : 'orange'">
+      <div class="xui-tile__row">
+        <span class="xui-tile__label">{{ t('twofa_state') }}</span>
+        <span :class="status.enabled ? 'xui-chip xui-chip--ok' : 'xui-chip xui-chip--warn'">
           {{ status.enabled ? t('twofa_on') : t('twofa_off') }}
-        </a-tag>
-        <a-tag v-if="status.pending && !status.enabled" color="blue">{{ t('twofa_pending') }}</a-tag>
-        <a-tag v-if="status.enabled" color="blue">
+        </span>
+        <span v-if="status.pending && !status.enabled" class="xui-chip">{{ t('twofa_pending') }}</span>
+        <span v-if="status.enabled" class="xui-chip">
           {{ t('twofa_recovery_left') }}: {{ status.recoveryCodesLeft }}
-        </a-tag>
+        </span>
       </div>
 
       <a-alert type="info" show-icon :message="t('twofa_desc')" />
@@ -100,7 +100,10 @@ onMounted(refresh)
 
         <template v-if="enrollment">
           <a-alert type="warning" show-icon :message="t('twofa_scan_hint')" />
-          <img :src="enrollment.qrcode" :alt="t('twofa_title')" style="width: 220px" />
+          <!-- 同 QrcodeModal：验证器扫的是白底黑码，别把它放在玻璃上。 -->
+          <div class="xui-qr__frame" style="width: max-content">
+            <img :src="enrollment.qrcode" :alt="t('twofa_title')" style="width: 200px; display: block" />
+          </div>
           <div>
             {{ t('twofa_secret') }}:
             <a-typography-text code copyable>{{ enrollment.secret }}</a-typography-text>

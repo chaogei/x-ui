@@ -72,14 +72,16 @@ onMounted(load)
 
 <template>
   <a-spin :spinning="spinning">
-    <a-space style="margin-bottom: 12px">
+    <div class="xui-toolbar xui-glass">
+      <h2 class="xui-toolbar__title">{{ t('menu_panel_setting') }}</h2>
+      <span class="xui-toolbar__spacer" />
       <a-button type="primary" :disabled="!dirty" @click="save">{{ t('save_config') }}</a-button>
       <a-button danger :disabled="dirty" @click="restartPanel">{{ t('restart_panel') }}</a-button>
-    </a-space>
+    </div>
 
     <a-tabs v-model:activeKey="activeTab" type="card">
       <a-tab-pane key="panel" :tab="t('tab_panel')">
-        <a-list item-layout="horizontal" style="background: #fff">
+        <a-list class="xui-panel xui-glass" item-layout="horizontal">
           <SettingListItem
             v-model:value="draft.webListen"
             type="text"
@@ -120,7 +122,7 @@ onMounted(load)
       </a-tab-pane>
 
       <a-tab-pane key="user" :tab="t('tab_user')">
-        <a-space direction="vertical" style="width: 100%" size="middle">
+        <div class="xui-stack">
           <a-card :title="t('tab_user')">
             <a-form layout="vertical" style="max-width: 360px">
               <a-form-item :label="t('setting_old_username')">
@@ -141,11 +143,11 @@ onMounted(load)
             </a-form>
           </a-card>
           <TwoFactorCard />
-        </a-space>
+        </div>
       </a-tab-pane>
 
       <a-tab-pane key="core" :tab="t('tab_core')">
-        <a-list item-layout="horizontal" style="background: #fff">
+        <a-list class="xui-panel xui-glass" item-layout="horizontal">
           <SettingListItem
             v-model:value="draft.coreTemplateConfig"
             type="textarea"
@@ -156,7 +158,7 @@ onMounted(load)
       </a-tab-pane>
 
       <a-tab-pane key="sub" :tab="t('tab_subscription')">
-        <a-list item-layout="horizontal" style="background: #fff">
+        <a-list class="xui-panel xui-glass" item-layout="horizontal">
           <SettingListItem
             v-model:value="draft.subAddress"
             type="text"
@@ -173,7 +175,7 @@ onMounted(load)
       </a-tab-pane>
 
       <a-tab-pane key="tg" :tab="t('tab_tg')">
-        <a-list item-layout="horizontal" style="background: #fff">
+        <a-list class="xui-panel xui-glass" item-layout="horizontal">
           <SettingListItem
             v-model:value="draft.tgBotEnable"
             type="switch"
@@ -202,7 +204,7 @@ onMounted(load)
       </a-tab-pane>
 
       <a-tab-pane key="other" :tab="t('tab_other')">
-        <a-list item-layout="horizontal" style="background: #fff">
+        <a-list class="xui-panel xui-glass" item-layout="horizontal">
           <SettingListItem
             v-model:value="draft.timeLocation"
             type="text"

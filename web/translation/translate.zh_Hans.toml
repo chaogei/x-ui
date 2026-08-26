@@ -271,6 +271,9 @@
 "unit_minute" = "分钟"
 "unit_hour" = "小时"
 "unit_day" = "天"
+"menu_toggle" = "展开 / 收起菜单"
+"inbound_empty" = "还没有入站"
+"inbound_empty_hint" = "添加第一个入站之后，流量、到期时间和客户端都会显示在这里。"
 
 # ------- 多用户客户端（界面） -------
 "client_list" = "客户端"

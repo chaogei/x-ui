@@ -1,15 +1,19 @@
 <script setup lang="ts">
 /**
  * StatusView —— 系统状态面板。
+ *
+ * 版面是两排玻璃瓦片：上排四个仪表（CPU / 内存 / swap / 磁盘），下排是核心、
+ * 运行时长、负载、连接数和网络。旧版把后五项塞进一排没有标题的卡片里，只留
+ * 一堆彩色 tag，看的人得先猜哪个数字是什么。
  */
 import {
   ArrowDownOutlined,
   ArrowUpOutlined,
   CloudDownloadOutlined,
   CloudUploadOutlined,
-  QuestionCircleFilled,
+  QuestionCircleOutlined,
 } from '@ant-design/icons-vue'
-import { onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 
 import { t } from '../boot'
 import { formatSecond, sizeFormat, toFixed } from '../format'
@@ -58,25 +62,51 @@ function percent(v: CurTotal): number {
   return v.total === 0 ? 0 : toFixed((v.current / v.total) * 100, 2)
 }
 
-function gaugeColor(v: CurTotal): string {
-  const p = percent(v)
-  if (p < 80) return '#67C23A'
-  if (p < 90) return '#E6A23C'
-  return '#F56C6C'
+/** 仪表配色是三档阈值，不是渐变：一眼能分出"还好 / 该看看了 / 出事了"。 */
+function gaugeColor(p: number): string {
+  if (p < 80) return '#34d399'
+  if (p < 90) return '#fbbf24'
+  return '#fb7185'
 }
 
-function coreColor(state: string): string {
-  switch (state) {
+const gauges = computed(() => [
+  {
+    key: 'cpu',
+    label: t('cpu'),
+    percent: toFixed(status.value.cpu, 2),
+    detail: '',
+  },
+  {
+    key: 'mem',
+    label: t('memory'),
+    percent: percent(status.value.mem),
+    detail: `${sizeFormat(status.value.mem.current)} / ${sizeFormat(status.value.mem.total)}`,
+  },
+  {
+    key: 'swap',
+    label: t('swap'),
+    percent: percent(status.value.swap),
+    detail: `${sizeFormat(status.value.swap.current)} / ${sizeFormat(status.value.swap.total)}`,
+  },
+  {
+    key: 'disk',
+    label: t('disk'),
+    percent: percent(status.value.disk),
+    detail: `${sizeFormat(status.value.disk.current)} / ${sizeFormat(status.value.disk.total)}`,
+  },
+])
+
+/** 核心状态的三种取值各自对应一种 chip 配色。 */
+const coreChipClass = computed(() => {
+  switch (status.value.core.state) {
     case 'running':
-      return 'green'
-    case 'stop':
-      return 'orange'
+      return 'xui-chip xui-chip--ok'
     case 'error':
-      return 'red'
+      return 'xui-chip xui-chip--bad'
     default:
-      return 'default'
+      return 'xui-chip xui-chip--warn'
   }
-}
+})
 
 async function refresh(): Promise<void> {
   const msg = await post<StatusPayload>('server/status', undefined, true)
@@ -123,100 +153,120 @@ onBeforeUnmount(() => {
 
 <template>
   <a-spin :spinning="spinning" :tip="loadingTip">
-    <a-card class="xui-card">
-      <a-row :gutter="[16, 16]">
-        <a-col :xs="12" :md="6" class="xui-gauge">
-          <a-progress type="dashboard" :stroke-color="gaugeColor({ current: status.cpu, total: 100 })" :percent="toFixed(status.cpu, 2)" />
-          <div>CPU</div>
-        </a-col>
-        <a-col :xs="12" :md="6" class="xui-gauge">
-          <a-progress type="dashboard" :stroke-color="gaugeColor(status.mem)" :percent="percent(status.mem)" />
-          <div>{{ t('memory') }}: {{ sizeFormat(status.mem.current) }} / {{ sizeFormat(status.mem.total) }}</div>
-        </a-col>
-        <a-col :xs="12" :md="6" class="xui-gauge">
-          <a-progress type="dashboard" :stroke-color="gaugeColor(status.swap)" :percent="percent(status.swap)" />
-          <div>swap: {{ sizeFormat(status.swap.current) }} / {{ sizeFormat(status.swap.total) }}</div>
-        </a-col>
-        <a-col :xs="12" :md="6" class="xui-gauge">
-          <a-progress type="dashboard" :stroke-color="gaugeColor(status.disk)" :percent="percent(status.disk)" />
-          <div>{{ t('disk') }}: {{ sizeFormat(status.disk.current) }} / {{ sizeFormat(status.disk.total) }}</div>
-        </a-col>
-      </a-row>
-    </a-card>
+    <div class="xui-stack">
+      <section>
+        <h2 class="xui-section-title">{{ t('system_status') }}</h2>
+        <div class="xui-tiles">
+          <article v-for="g in gauges" :key="g.key" class="xui-tile xui-tile--gauge xui-glass">
+            <span class="xui-tile__label">{{ g.label }}</span>
+            <div class="xui-tile__gauge">
+              <a-progress
+                type="dashboard"
+                :size="128"
+                :stroke-color="gaugeColor(g.percent)"
+                trail-color="rgba(255, 255, 255, 0.1)"
+                :percent="g.percent"
+              />
+            </div>
+            <p class="xui-tile__meta">{{ g.detail || '\u00a0' }}</p>
+          </article>
+        </div>
+      </section>
 
-    <a-row :gutter="[16, 16]">
-      <a-col :xs="24" :md="12">
-        <a-card>
-          {{ t('sing_box_status') }}:
-          <a-tag :color="coreColor(status.core.state)">{{ status.core.state }}</a-tag>
-          <a-tooltip v-if="status.core.state === 'error'">
-            <template #title>
-              <p v-for="(line, i) in (status.core.errorMsg || '').split('\n')" :key="i">{{ line }}</p>
-            </template>
-            <QuestionCircleFilled />
-          </a-tooltip>
-          <a-tag color="green" style="cursor: pointer" @click="openVersions">{{ status.core.version }}</a-tag>
-          <a-tag color="blue" style="cursor: pointer" @click="openVersions">{{ t('switch_version') }}</a-tag>
-        </a-card>
-      </a-col>
-      <a-col :xs="24" :md="12">
-        <a-card>
-          {{ t('uptime') }}:
-          <a-tag color="#87d068">{{ formatSecond(status.uptime) }}</a-tag>
-          <a-tooltip :title="t('uptime_hint')"><QuestionCircleFilled /></a-tooltip>
-        </a-card>
-      </a-col>
-      <a-col :xs="24" :md="12">
-        <a-card>{{ t('loads') }}: {{ status.loads.map((l) => toFixed(l, 2)).join(' | ') }}</a-card>
-      </a-col>
-      <a-col :xs="24" :md="12">
-        <a-card>
-          {{ t('connections') }}: {{ status.tcpCount }} / {{ status.udpCount }}
-          <a-tooltip :title="t('tcp_udp_hint')"><QuestionCircleFilled /></a-tooltip>
-        </a-card>
-      </a-col>
-      <a-col :xs="24" :md="12">
-        <a-card>
-          <a-row>
-            <a-col :span="12">
-              <ArrowUpOutlined /> {{ sizeFormat(status.netIO.up) }} / S
-              <a-tooltip :title="t('net_io_up_hint')"><QuestionCircleFilled /></a-tooltip>
-            </a-col>
-            <a-col :span="12">
-              <ArrowDownOutlined /> {{ sizeFormat(status.netIO.down) }} / S
-              <a-tooltip :title="t('net_io_down_hint')"><QuestionCircleFilled /></a-tooltip>
-            </a-col>
-          </a-row>
-        </a-card>
-      </a-col>
-      <a-col :xs="24" :md="12">
-        <a-card>
-          <a-row>
-            <a-col :span="12">
-              <CloudUploadOutlined /> {{ sizeFormat(status.netTraffic.sent) }}
-              <a-tooltip :title="t('net_traffic_sent_hint')"><QuestionCircleFilled /></a-tooltip>
-            </a-col>
-            <a-col :span="12">
-              <CloudDownloadOutlined /> {{ sizeFormat(status.netTraffic.recv) }}
-              <a-tooltip :title="t('net_traffic_recv_hint')"><QuestionCircleFilled /></a-tooltip>
-            </a-col>
-          </a-row>
-        </a-card>
-      </a-col>
-    </a-row>
+      <section>
+        <h2 class="xui-section-title">{{ t('sing_box_status') }}</h2>
+        <div class="xui-tiles xui-tiles--wide">
+          <article class="xui-tile xui-glass">
+            <span class="xui-tile__label">{{ t('sing_box_status') }}</span>
+            <div class="xui-tile__row">
+              <span :class="coreChipClass">{{ status.core.state }}</span>
+              <a-tooltip v-if="status.core.state === 'error'">
+                <template #title>
+                  <p v-for="(line, i) in (status.core.errorMsg || '').split('\n')" :key="i">{{ line }}</p>
+                </template>
+                <QuestionCircleOutlined />
+              </a-tooltip>
+              <span v-if="status.core.version" class="xui-chip">{{ status.core.version }}</span>
+            </div>
+            <div class="xui-tile__row">
+              <a-button size="small" @click="openVersions">{{ t('switch_version') }}</a-button>
+            </div>
+          </article>
+
+          <article class="xui-tile xui-glass">
+            <span class="xui-tile__label">{{ t('uptime') }}</span>
+            <p class="xui-tile__value">{{ formatSecond(status.uptime) }}</p>
+            <p class="xui-tile__meta">{{ t('uptime_hint') }}</p>
+          </article>
+
+          <article class="xui-tile xui-glass">
+            <span class="xui-tile__label">{{ t('loads') }}</span>
+            <p class="xui-tile__value">{{ status.loads.map((l) => toFixed(l, 2)).join('  /  ') }}</p>
+            <p class="xui-tile__meta">1 / 5 / 15 min</p>
+          </article>
+
+          <article class="xui-tile xui-glass">
+            <span class="xui-tile__label">{{ t('connections') }}</span>
+            <p class="xui-tile__value">{{ status.tcpCount }} / {{ status.udpCount }}</p>
+            <p class="xui-tile__meta">{{ t('tcp_udp_hint') }}</p>
+          </article>
+
+          <article class="xui-tile xui-glass">
+            <span class="xui-tile__label">{{ t('network_io') }}</span>
+            <div class="xui-duo">
+              <div class="xui-duo__cell">
+                <a-tooltip :title="t('net_io_up_hint')">
+                  <span class="xui-duo__cap"><ArrowUpOutlined /> {{ t('upload') }}</span>
+                </a-tooltip>
+                <span class="xui-tile__value">{{ sizeFormat(status.netIO.up) }}/s</span>
+              </div>
+              <div class="xui-duo__cell">
+                <a-tooltip :title="t('net_io_down_hint')">
+                  <span class="xui-duo__cap"><ArrowDownOutlined /> {{ t('download_rate') }}</span>
+                </a-tooltip>
+                <span class="xui-tile__value">{{ sizeFormat(status.netIO.down) }}/s</span>
+              </div>
+            </div>
+          </article>
+
+          <article class="xui-tile xui-glass">
+            <span class="xui-tile__label">{{ t('network_traffic') }}</span>
+            <div class="xui-duo">
+              <div class="xui-duo__cell">
+                <a-tooltip :title="t('net_traffic_sent_hint')">
+                  <span class="xui-duo__cap"><CloudUploadOutlined /> {{ t('upload') }}</span>
+                </a-tooltip>
+                <span class="xui-tile__value">{{ sizeFormat(status.netTraffic.sent) }}</span>
+              </div>
+              <div class="xui-duo__cell">
+                <a-tooltip :title="t('net_traffic_recv_hint')">
+                  <span class="xui-duo__cap"><CloudDownloadOutlined /> {{ t('download_rate') }}</span>
+                </a-tooltip>
+                <span class="xui-tile__value">{{ sizeFormat(status.netTraffic.recv) }}</span>
+              </div>
+            </div>
+          </article>
+        </div>
+      </section>
+    </div>
 
     <a-modal v-model:open="versionOpen" :title="t('switch_version')" :footer="null">
-      <p>{{ t('switch_version_hint') }}</p>
-      <p>{{ t('switch_version_warn') }}</p>
-      <a-tag
-        v-for="(version, index) in versions"
-        :key="version"
-        :color="index % 2 === 0 ? 'blue' : 'green'"
-        style="margin: 6px; cursor: pointer"
-        @click="switchVersion(version)"
-      >
-        {{ version }}
-      </a-tag>
+      <p class="xui-tile__meta">{{ t('switch_version_hint') }}</p>
+      <p class="xui-tile__meta">{{ t('switch_version_warn') }}</p>
+      <div class="xui-version-list">
+        <a-button v-for="version in versions" :key="version" size="small" @click="switchVersion(version)">
+          {{ version }}
+        </a-button>
+      </div>
     </a-modal>
   </a-spin>
 </template>
+
+<style scoped>
+.xui-version-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 16px;
+}
+</style>
