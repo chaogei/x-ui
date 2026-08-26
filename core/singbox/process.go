@@ -317,12 +317,18 @@ func (p *Process) Start() (err error) {
 	p.waitDone = make(chan struct{})
 	p.exitErr = nil
 
-	go p.pumpLogs(stdout)
-	go p.pumpLogs(stderr)
+	// os/exec 的契约：Wait 会关掉 StdoutPipe/StderrPipe，所以必须等读完再
+	// 调用它。抢在前面调，内核退出前最后打的那几行——恰恰是崩溃原因——
+	// 会在竞态里丢掉，读 goroutine 还可能撞上一个已经关闭的 fd。
+	var pumps sync.WaitGroup
+	pumps.Add(2)
+	go p.pumpLogs(&pumps, stdout)
+	go p.pumpLogs(&pumps, stderr)
 
 	// 独立 goroutine 执行 Wait 以回收僵尸并捕获退出错误。
 	waitDone := p.waitDone
 	go func() {
+		pumps.Wait()
 		waitErr := cmd.Wait()
 		p.mu.Lock()
 		if waitErr != nil {
@@ -355,11 +361,15 @@ func (p *Process) Start() (err error) {
 }
 
 // pumpLogs 持续读取管道并写入环形缓冲，EOF 或读错误时自然退出。
-func (p *Process) pumpLogs(reader io.ReadCloser) {
-	defer func() {
-		common.Recover("")
-		_ = reader.Close()
-	}()
+//
+// 读完才 Done：Wait 那边等的就是这个信号。管道本身交给 Wait 关闭，
+// 这里不碰——提前 Close 会让另一端的写入变成 EPIPE。
+func (p *Process) pumpLogs(done *sync.WaitGroup, reader io.Reader) {
+	defer done.Done()
+	// recover 只有在被 defer 直接调用的函数里才生效。原先写的是
+	// `defer func(){ common.Recover("") }()`——recover 隔了一层，返回 nil，
+	// panic 照样把整个面板带走；而且那个空 msg 意味着连一行日志都没有。
+	defer common.Recover("sing-box log pump")
 	br := bufio.NewReaderSize(reader, 8192)
 	for {
 		line, _, err := br.ReadLine()
