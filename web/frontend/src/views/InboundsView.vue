@@ -113,12 +113,16 @@ function openEdit(row: DBInbound): void {
   modalOpen.value = true
 }
 
-/** buildPayload 把 viewmodel 拍平成后端 model.Inbound 的表单字段。 */
+/**
+ * buildPayload 把 viewmodel 拍平成后端 model.Inbound 的表单字段。
+ *
+ * 不带 up/down：页面上的那两个数字是 load() 那一刻的快照，而流量任务每 10 秒
+ * 就把内核计数器累加进这两列。回传快照等于把这中间跑过的字节抹掉——拨一下
+ * 启用开关就够了。清零走 xui/inbound/resetTraffic。
+ */
 function buildPayload(inbound: Inbound, db: DBInbound): Record<string, unknown> {
   const snapshot = inbound.toJson()
   return {
-    up: db.up,
-    down: db.down,
     total: db.total,
     remark: db.remark,
     enable: db.enable,
@@ -156,10 +160,9 @@ function resetTraffic(row: DBInbound): void {
     okText: t('reset'),
     cancelText: t('cancel'),
     onOk: async () => {
-      const copy = new DBInbound(row)
-      copy.up = 0
-      copy.down = 0
-      await saveRow(copy)
+      if ((await post(`xui/inbound/resetTraffic/${row.id}`)).success) {
+        await load()
+      }
     },
   })
 }
