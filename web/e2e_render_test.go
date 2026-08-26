@@ -3,6 +3,7 @@ package web
 import (
 	"bytes"
 	"encoding/json"
+	"net/url"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -155,6 +156,45 @@ func TestE2EFrontendUsesTheRequestLocale(t *testing.T) {
 				t.Errorf("page shows the raw i18n key menu_system_status instead of a translation")
 			}
 		})
+	}
+}
+
+// TestE2EFrontendRendersTheCredentialWarning 补上 initialCredentials 那条链路的后半截。
+//
+// e2e_panel_test.go 只能断言服务端注入的布尔量，因为告警文案是前端渲染的。
+// 那个断言留了个缺口：标记对了但组件忘了用它（这条告警的历史正是被写死成
+// v-if="false"），测试照样全绿，而用户永远看不到警告。这里把整条链路走完：
+// 标记 → 渲染出的文字 → 改密后消失。
+func TestE2EFrontendRendersTheCredentialWarning(t *testing.T) {
+	smoke := requireRenderSmoke(t)
+
+	p := newPanel(t)
+	p.login()
+
+	const warning = "randomly generated first-boot password"
+	english := [2]string{"Accept-Language", "en-US"}
+
+	before := smoke.run(t, readBody(t, p.get("xui/inbounds", english)))
+	if !before.Mounted {
+		t.Fatalf("the Vue app did not mount")
+	}
+	if !strings.Contains(before.Text, warning) {
+		t.Fatalf("the inbounds page does not warn about the generated password\ngot: %s",
+			truncate(before.Text, 400))
+	}
+
+	if msg := p.decode(p.postForm("xui/setting/updateUser", url.Values{
+		"oldUsername": {p.username},
+		"oldPassword": {p.password},
+		"newUsername": {"operator"},
+		"newPassword": {"a-properly-chosen-passphrase"},
+	})); !msg.Success {
+		t.Fatalf("change password failed: %s", msg.Msg)
+	}
+
+	after := smoke.run(t, readBody(t, p.get("xui/inbounds", english)))
+	if strings.Contains(after.Text, warning) {
+		t.Error("the warning is still on screen after the operator set their own password")
 	}
 }
 
