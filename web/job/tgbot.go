@@ -45,14 +45,6 @@ func getBot(token string) (*tgbotapi.BotAPI, error) {
 	return api, nil
 }
 
-// resetBotCache 清空缓存，供测试与 token 变更后强制重建。
-func resetBotCache() {
-	tgbot.mu.Lock()
-	tgbot.api = nil
-	tgbot.token = ""
-	tgbot.mu.Unlock()
-}
-
 // logTgError 统一记录 Telegram 相关失败，避免各处 fmt.Println 到 stdout。
 func logTgError(msg string, err error) {
 	logger.Warningf("telegram: %s: %v", msg, err)

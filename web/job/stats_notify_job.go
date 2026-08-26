@@ -22,7 +22,6 @@ const (
 )
 
 type StatsNotifyJob struct {
-	enable         bool
 	coreService    service.CoreService
 	inboundService service.InboundService
 	settingService service.SettingService

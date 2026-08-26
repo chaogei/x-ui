@@ -32,15 +32,6 @@ func I18n(c *gin.Context, messageID string) string {
 	return msg
 }
 
-func getUriId(c *gin.Context) int64 {
-	s := struct {
-		Id int64 `uri:"id"`
-	}{}
-
-	_ = c.BindUri(&s)
-	return s.Id
-}
-
 // getRemoteIp 返回请求方 IP。
 //
 // 实现委托给 service.ClientIP（内部走 gin 的受信代理链），
