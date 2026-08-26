@@ -13,11 +13,12 @@ import {
   CloudUploadOutlined,
   QuestionCircleOutlined,
 } from '@ant-design/icons-vue'
-import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
+import { computed, ref } from 'vue'
 
 import { t } from '../boot'
 import { formatSecond, sizeFormat, toFixed } from '../format'
-import { post, sleep } from '../http'
+import { post } from '../http'
+import { usePolling } from '../poll'
 
 interface CurTotal {
   current: number
@@ -56,7 +57,6 @@ const spinning = ref(false)
 const loadingTip = ref('')
 const versionOpen = ref(false)
 const versions = ref<string[]>([])
-let stopped = false
 
 function percent(v: CurTotal): number {
   return v.total === 0 ? 0 : toFixed((v.current / v.total) * 100, 2)
@@ -108,11 +108,20 @@ const coreChipClass = computed(() => {
   }
 })
 
-async function refresh(): Promise<void> {
+/**
+ * refresh 拉一次状态快照。
+ *
+ * 返回 false 让轮询退避：面板重启期间这里会连着失败十几次，固定 2 秒一发
+ * 只是在往一台正在起来的机器上砸请求。post() 已经把网络异常折叠成
+ * success:false，所以这里不会抛。
+ */
+async function refresh(): Promise<boolean> {
   const msg = await post<StatusPayload>('server/status', undefined, true)
-  if (msg.success && msg.obj) {
-    status.value = msg.obj
+  if (!msg.success || !msg.obj) {
+    return false
   }
+  status.value = msg.obj
+  return true
 }
 
 async function openVersions(): Promise<void> {
@@ -135,20 +144,7 @@ async function switchVersion(version: string): Promise<void> {
   spinning.value = false
 }
 
-onMounted(async () => {
-  while (!stopped) {
-    try {
-      await refresh()
-    } catch {
-      // 轮询失败不打断循环：面板重启期间会连续失败几次，属正常。
-    }
-    await sleep(2000)
-  }
-})
-
-onBeforeUnmount(() => {
-  stopped = true
-})
+usePolling(refresh, { interval: 2000 })
 </script>
 
 <template>
