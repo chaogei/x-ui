@@ -171,15 +171,19 @@ func (s *CoreService) RestartCore(force bool) error {
 	state.mu.Lock()
 	defer state.mu.Unlock()
 
-	if state.proc != nil && state.proc.IsRunning() {
-		if !force && state.proc.GetConfig().Equals(cfg) {
+	if state.proc != nil {
+		if !force && state.proc.IsRunning() && state.proc.GetConfig().Equals(cfg) {
 			logger.Debug("sing-box config unchanged, skip restart")
 			return nil
 		}
-		// Stop 内部做 graceful wait 并阻塞直到端口释放，下一步的 Start 才能安全 bind。
-		if err := state.proc.Stop(); err != nil {
-			logger.Warning("stop old sing-box failed:", err)
+		// 不管进程是否还活着都要 Close：崩溃退出的实例仍握着一条到
+		// v2ray_api 的 gRPC 连接，它会在后台永远重连一个没人监听的端口。
+		// Close 在进程仍在运行时内部走 graceful stop，阻塞到端口释放，
+		// 下一步的 Start 才能安全 bind。
+		if err := state.proc.Close(); err != nil {
+			logger.Warning("release old sing-box instance failed:", err)
 		}
+		state.proc = nil
 	}
 
 	state.proc = singbox.NewProcess(cfg)

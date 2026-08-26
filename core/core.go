@@ -14,6 +14,14 @@ type Core interface {
 	// Stop 停止内核，若未运行则返回错误。
 	Stop() error
 
+	// Close 释放该实例持有的全部资源（连接、context 等），
+	// 内核仍在运行时先停止它。可重复调用。
+	//
+	// 与 Stop 的分工：Stop 表达"把内核停下来"，失败是一个值得上报的事件；
+	// Close 表达"这个实例我不要了"，调用方在换用新实例前必须调用它，
+	// 否则崩溃退出的旧实例会继续持有到内核 API 的连接。
+	Close() error
+
 	// IsRunning 返回内核进程是否仍在运行。
 	IsRunning() bool
 

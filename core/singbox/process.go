@@ -338,6 +338,11 @@ func (p *Process) Start() (err error) {
 	p.refreshVersionLocked()
 	p.refreshAPIPortLocked()
 
+	// 上一轮的连接指向的是刚才那个进程的端口，留着只会在后台一直重连。
+	if p.stats != nil {
+		_ = p.stats.Close()
+		p.stats = nil
+	}
 	// 建立 V2Ray API 长连接（懒拨号）；若端口未配置则跳过，GetTraffic 时会返回明确错误。
 	if p.apiPort > 0 {
 		if sc, errSc := newStatsClient(p.apiPort); errSc != nil {
@@ -396,8 +401,42 @@ func (p *Process) Stop() error {
 		cancel()
 		<-waitDone
 	}
+	// 进程已退出，但 exec.CommandContext 建的 context 还挂着。
+	// graceful 路径上没人调过 cancel，那份 context 会一直留到 Process 被回收。
+	cancel()
 
-	// 进程已退出，回收 gRPC 连接；再次 Start 会重新创建。
+	p.releaseStats()
+	return nil
+}
+
+// Close 释放这个实例持有的所有资源，进程还活着就先停掉它。
+//
+// 存在的理由：内核崩溃退出后，面板会丢掉旧的 Process 换一个新的。
+// 旧实例的 gRPC 连接不会随子进程一起消失——grpc.ClientConn 会在后台
+// 无限重连那个已经没人监听的端口。配置永久非法时每次重启攒一条，
+// 一天下来就是几百个 socket 与对应的 goroutine。
+//
+// 可重复调用。
+func (p *Process) Close() error {
+	if p.IsRunning() {
+		if err := p.Stop(); err != nil {
+			return err
+		}
+		return nil
+	}
+	p.mu.Lock()
+	cancel := p.cancel
+	p.cancel = nil
+	p.mu.Unlock()
+	if cancel != nil {
+		cancel()
+	}
+	p.releaseStats()
+	return nil
+}
+
+// releaseStats 关闭 V2Ray API 连接。再次 Start 时会重新建立。
+func (p *Process) releaseStats() {
 	p.mu.Lock()
 	stats := p.stats
 	p.stats = nil
@@ -405,5 +444,4 @@ func (p *Process) Stop() error {
 	if stats != nil {
 		_ = stats.Close()
 	}
-	return nil
 }
