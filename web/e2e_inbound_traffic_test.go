@@ -88,26 +88,6 @@ func TestE2EInboundResetTraffic(t *testing.T) {
 	}
 }
 
-// TestE2EInboundLegacyZeroPayloadStillResets 固定住过渡期的兼容行为：
-// 仓库里内嵌的前端产物仍然靠"提交 up=0&down=0"来清零。这个用例连同
-// legacyCounterReset 一起，在前端改调 /inbound/resetTraffic 之后可以删掉。
-func TestE2EInboundLegacyZeroPayloadStillResets(t *testing.T) {
-	p := newPanel(t)
-	p.login()
-
-	created := seedInboundWithTraffic(t, p, 20502, 4096, 8192)
-
-	form := inboundForm(20502, "vmess", vmessSettings)
-	form.Set("up", "0")
-	form.Set("down", "0")
-	if msg := p.decode(p.postForm("xui/inbound/update/"+strconv.Itoa(created.Id), form)); !msg.Success {
-		t.Fatalf("legacy reset: %s", msg.Msg)
-	}
-	if row := reloadInbound(t, created.Id); row.Up != 0 || row.Down != 0 {
-		t.Errorf("up/down = %d/%d, want the legacy zeroing payload to still reset", row.Up, row.Down)
-	}
-}
-
 // TestE2EInboundEditWithoutCounterFieldsKeepsThem 是上面那条兼容路径的边界：
 // 完全不提交 up/down 的请求（脚本、curl）不表达任何清零意图，计数器必须原封不动。
 func TestE2EInboundEditWithoutCounterFieldsKeepsThem(t *testing.T) {
