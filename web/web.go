@@ -228,6 +228,10 @@ func (s *Server) initRouter() (*gin.Engine, error) {
 			c.Header("Cache-Control", "max-age=31536000")
 		}
 	})
+	// 压缩挂在 Cache-Control 之后：它会自己把响应发出去，此时那个头必须已经
+	// 在响应头里了。产物只在生产模式下是不可变的（内嵌 FS），调试模式下磁盘上
+	// 的文件随时会被重新构建，不能缓存压缩结果。
+	engine.Use(middleware.StaticGzip(assetsBasePath, !config.IsDebug()))
 	if err := s.initI18n(engine); err != nil {
 		return nil, err
 	}
