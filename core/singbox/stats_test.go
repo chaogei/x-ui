@@ -8,6 +8,50 @@ import (
 	"x-ui/core/singbox/statspb"
 )
 
+func TestParseTrafficName(t *testing.T) {
+	tests := []struct {
+		name, stat           string
+		kind, tag, direction string
+		ok                   bool
+	}{
+		{
+			name: "inbound golden name", stat: "inbound>>>inbound-443-vmess>>>traffic>>>uplink",
+			kind: "inbound", tag: "inbound-443-vmess", direction: "uplink", ok: true,
+		},
+		{
+			name: "outbound golden name", stat: "outbound>>>direct>>>traffic>>>downlink",
+			kind: "outbound", tag: "direct", direction: "downlink", ok: true,
+		},
+		{
+			name: "user golden name", stat: "user>>>alice@example.com>>>traffic>>>uplink",
+			kind: "user", tag: "alice@example.com", direction: "uplink", ok: true,
+		},
+		{
+			name: "delimiter in tag", stat: "user>>>tenant>>>alice@example.com>>>traffic>>>downlink",
+			kind: "user", tag: "tenant>>>alice@example.com", direction: "downlink", ok: true,
+		},
+		{name: "empty tag", stat: "inbound>>>>>>traffic>>>uplink"},
+		{name: "unknown kind", stat: "endpoint>>>direct>>>traffic>>>uplink"},
+		{name: "newline in tag", stat: "user>>>alice\n@example.com>>>traffic>>>uplink"},
+		{name: "trailing component", stat: "inbound>>>tag>>>traffic>>>uplink>>>extra"},
+	}
+
+	for _, tc := range tests {
+		t.Run(tc.name, func(t *testing.T) {
+			kind, tag, direction, ok := parseTrafficName(tc.stat)
+			if ok != tc.ok {
+				t.Fatalf("parseTrafficName(%q) ok = %t, want %t", tc.stat, ok, tc.ok)
+			}
+			if ok && (kind != tc.kind || tag != tc.tag || direction != tc.direction) {
+				t.Fatalf(
+					"parseTrafficName(%q) = (%q, %q, %q), want (%q, %q, %q)",
+					tc.stat, kind, tag, direction, tc.kind, tc.tag, tc.direction,
+				)
+			}
+		})
+	}
+}
+
 // TestAggregateTraffic 是流量名解析的表驱动护栏。
 //
 // 这段逻辑的每一种错法都很安静：多算一个 api 的字节、把 user 维度当成

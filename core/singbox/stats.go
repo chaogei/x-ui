@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"regexp"
+	"strings"
 	"sync"
 	"time"
 
@@ -15,7 +15,7 @@ import (
 	"google.golang.org/grpc/credentials/insecure"
 )
 
-// trafficRegex 匹配 sing-box v2ray_api StatsService 返回的流量计数器名。
+// parseTrafficName 解析 sing-box v2ray_api StatsService 返回的流量计数器名。
 //
 // 三种前缀分别对应入站、出站与"按用户"维度：
 //
@@ -25,7 +25,44 @@ import (
 //
 // user 维度是多用户配额的依据：sing-box 只有在 experimental.v2ray_api.stats.users
 // 里列出用户名时才建这个计数器，名字取自 inbound settings 中该用户的 name 字段。
-var trafficRegex = regexp.MustCompile(`^(inbound|outbound|user)>>>(.+)>>>traffic>>>(downlink|uplink)$`)
+//
+// tag 本身可以包含 ">>>"，所以从两端定位结构分隔符，而不是把整串切成固定段数。
+// 返回值直接引用 name 的底层存储，解析过程不分配内存。
+func parseTrafficName(name string) (kind, tag, direction string, ok bool) {
+	const delimiter = ">>>"
+
+	kindEnd := strings.Index(name, delimiter)
+	if kindEnd <= 0 {
+		return "", "", "", false
+	}
+	kind = name[:kindEnd]
+	switch kind {
+	case "inbound", "outbound", "user":
+	default:
+		return "", "", "", false
+	}
+
+	directionStart := strings.LastIndex(name, delimiter)
+	if directionStart <= kindEnd {
+		return "", "", "", false
+	}
+	direction = name[directionStart+len(delimiter):]
+	if direction != "downlink" && direction != "uplink" {
+		return "", "", "", false
+	}
+
+	trafficStart := strings.LastIndex(name[:directionStart], delimiter)
+	tagStart := kindEnd + len(delimiter)
+	if trafficStart <= tagStart || name[trafficStart+len(delimiter):directionStart] != "traffic" {
+		return "", "", "", false
+	}
+	tag = name[tagStart:trafficStart]
+	// Keep the old regexp's `.` semantics: a tag containing a newline is malformed.
+	if strings.IndexByte(tag, '\n') >= 0 {
+		return "", "", "", false
+	}
+	return kind, tag, direction, true
+}
 
 // statsQueryTimeout 单次 QueryStats RPC 的最长等待时间。
 const statsQueryTimeout = 10 * time.Second
@@ -107,11 +144,10 @@ func aggregateTraffic(stats []*statspb.Stat) []*core.Traffic {
 		if stat == nil {
 			continue
 		}
-		matches := trafficRegex.FindStringSubmatch(stat.Name)
-		if len(matches) != 4 {
+		kind, tag, dir, ok := parseTrafficName(stat.Name)
+		if !ok {
 			continue
 		}
-		kind, tag, dir := matches[1], matches[2], matches[3]
 		// api 是面板自己的管理入站，它的流量不属于任何用户，也不该计入配额。
 		if kind == "inbound" && tag == "api" {
 			continue

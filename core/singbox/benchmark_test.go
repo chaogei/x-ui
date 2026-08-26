@@ -13,7 +13,7 @@ import (
 var (
 	benchmarkBytesSink   []byte
 	benchmarkBoolSink    bool
-	benchmarkMatchesSink []string
+	benchmarkNameSink    [3]string
 	benchmarkTrafficSink []*core.Traffic
 )
 
@@ -80,13 +80,17 @@ func BenchmarkStatsNameParse(b *testing.B) {
 	for _, tc := range cases {
 		tc := tc
 		b.Run(tc.name, func(b *testing.B) {
-			var matches []string
+			var (
+				kind, tag, direction string
+				ok                   bool
+			)
 			b.ReportAllocs()
 			b.ResetTimer()
 			for i := 0; i < b.N; i++ {
-				matches = trafficRegex.FindStringSubmatch(tc.stat)
+				kind, tag, direction, ok = parseTrafficName(tc.stat)
 			}
-			benchmarkMatchesSink = matches
+			benchmarkNameSink = [3]string{kind, tag, direction}
+			benchmarkBoolSink = ok
 		})
 	}
 }
