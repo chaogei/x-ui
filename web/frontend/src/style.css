@@ -1,3 +1,67 @@
+/*
+ * style.css —— 面板的设计系统。
+ *
+ * 观感取向：极暗的极光底图 + 半透明磨砂面板（frosted glass）。三条约束贯穿全文：
+ *
+ *  1. 底图只有一张，固定在视口上，登录页与登录后共用。磨砂之所以成立，是因为
+ *     它背后真的有东西可以透；每页各刷一张背景（旧登录页那种每次刷新随机渐变）
+ *     既谈不上产品感，也让文字对比度变成抽奖。
+ *  2. antd 的样式是运行时注入的，且用 prepend 插在 <head> 顶部（见
+ *     vc-util/Dom/dynamicCSS 的 prepend:'queue'），本文件作为 <link> 排在它后面。
+ *     所以同权重时我们赢，覆盖 antd 表面色不需要 !important —— 只需要选择器的
+ *     类数量不少于 antd 那条规则。
+ *  3. 玻璃是渐进增强。prefers-reduced-transparency 与不支持 backdrop-filter 的
+ *     浏览器都回落到实心深色面板：可以不好看，不能看不清。
+ */
+
+:root {
+  /* 与 theme.ts 里的令牌是同一套颜色，改一处要改两处。 */
+  --xui-bg-base: #05070f;
+  --xui-primary: #4361ee;
+  --xui-primary-soft: rgba(67, 97, 238, 0.32);
+  --xui-accent: #2dd4bf;
+  --xui-danger: #fb7185;
+  --xui-warning: #fbbf24;
+  --xui-success: #34d399;
+
+  --xui-text: rgba(255, 255, 255, 0.92);
+  --xui-text-2: rgba(255, 255, 255, 0.72);
+  --xui-text-3: rgba(255, 255, 255, 0.55);
+
+  --xui-glass-bg: rgba(255, 255, 255, 0.06);
+  --xui-glass-bg-strong: rgba(255, 255, 255, 0.1);
+  --xui-glass-border: rgba(255, 255, 255, 0.16);
+  --xui-glass-border-soft: rgba(255, 255, 255, 0.09);
+  --xui-glass-blur: blur(22px) saturate(150%);
+  --xui-glass-highlight: linear-gradient(
+    180deg,
+    rgba(255, 255, 255, 0.1) 0%,
+    rgba(255, 255, 255, 0.02) 38%,
+    rgba(255, 255, 255, 0) 100%
+  );
+
+  /* 浮层压着的是页面内容而不是背景图，透太多会看到两层文字。 */
+  --xui-elevated-bg: rgba(19, 25, 44, 0.78);
+  /* 表格里钉住的操作列必须挡住从下面滚过去的内容。 */
+  --xui-fixed-cell-bg: rgba(13, 18, 34, 0.94);
+
+  --xui-shadow: 0 18px 40px rgba(3, 6, 16, 0.45);
+  --xui-shadow-lg: 0 28px 70px rgba(3, 6, 16, 0.55);
+
+  --xui-radius: 20px;
+  --xui-radius-sm: 12px;
+
+  --xui-dur: 200ms;
+  --xui-ease: cubic-bezier(0.22, 0.61, 0.36, 1);
+
+  --xui-sider-width: 240px;
+  --xui-topbar-height: 64px;
+
+  --xui-font: Inter, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', 'PingFang SC',
+    'Hiragino Sans GB', 'Microsoft YaHei', sans-serif;
+  --xui-font-mono: ui-monospace, SFMono-Regular, 'JetBrains Mono', Menlo, Consolas, monospace;
+}
+
 html,
 body,
 #app {
@@ -5,62 +69,921 @@ body,
   margin: 0;
 }
 
+body {
+  color: var(--xui-text);
+  background-color: var(--xui-bg-base);
+  font-family: var(--xui-font);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+/*
+  极光底图。放在 body 的伪元素上而不是某个组件里：登录页没有 AppShell，
+  但两边必须是同一张图，产品才像同一个产品。
+  比视口大一圈，慢速漂移时边缘不会露白。
+*/
+body::before {
+  content: '';
+  position: fixed;
+  inset: -18vmax;
+  z-index: -2;
+  background-color: var(--xui-bg-base);
+  background-image:
+    radial-gradient(46% 38% at 12% 8%, rgba(67, 97, 238, 0.5) 0%, rgba(67, 97, 238, 0) 100%),
+    radial-gradient(40% 34% at 88% 4%, rgba(45, 212, 191, 0.28) 0%, rgba(45, 212, 191, 0) 100%),
+    radial-gradient(52% 44% at 78% 88%, rgba(124, 58, 237, 0.34) 0%, rgba(124, 58, 237, 0) 100%),
+    radial-gradient(38% 32% at 24% 92%, rgba(14, 165, 233, 0.22) 0%, rgba(14, 165, 233, 0) 100%);
+  animation: xui-drift 48s var(--xui-ease) infinite alternate;
+}
+
+/* 极细颗粒。纯渐变在大屏上会出现色带，一点噪声就能压住。 */
+body::after {
+  content: '';
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: 0.35;
+  background-image: url("data:image/svg+xml;charset=utf-8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.85' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)' opacity='0.5'/%3E%3C/svg%3E");
+  background-size: 160px 160px;
+}
+
+@keyframes xui-drift {
+  from {
+    transform: translate3d(-1.5%, -1%, 0) scale(1.02);
+  }
+  to {
+    transform: translate3d(1.5%, 1.5%, 0) scale(1.07);
+  }
+}
+
+/* ------------------------------------------------------------------ *
+ * 玻璃基元
+ * ------------------------------------------------------------------ */
+
+.xui-glass {
+  position: relative;
+  background: var(--xui-glass-bg);
+  border: 1px solid var(--xui-glass-border-soft);
+  border-radius: var(--xui-radius);
+  box-shadow: var(--xui-shadow);
+  -webkit-backdrop-filter: var(--xui-glass-blur);
+  backdrop-filter: var(--xui-glass-blur);
+}
+
+/* 顶缘的一道高光，玻璃的"厚度"几乎全靠它。 */
+.xui-glass::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--xui-glass-highlight);
+  pointer-events: none;
+}
+
+.xui-glass > * {
+  position: relative;
+}
+
+/* ------------------------------------------------------------------ *
+ * 外壳：侧边栏 + 顶栏 + 内容区
+ * ------------------------------------------------------------------ */
+
+.xui-shell {
+  min-height: 100%;
+  background: transparent;
+}
+
+.xui-shell .xui-main {
+  background: transparent;
+  min-width: 0;
+}
+
+.xui-shell .xui-sider {
+  padding: 16px 0 16px 16px;
+  background: transparent;
+}
+
+.xui-sider__inner {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  height: 100%;
+  padding: 18px 10px;
+  overflow-y: auto;
+  background: var(--xui-glass-bg);
+  border: 1px solid var(--xui-glass-border-soft);
+  border-radius: var(--xui-radius);
+  box-shadow: var(--xui-shadow);
+  -webkit-backdrop-filter: var(--xui-glass-blur);
+  backdrop-filter: var(--xui-glass-blur);
+  transition: opacity var(--xui-dur) var(--xui-ease);
+}
+
+.xui-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 4px 10px 0;
+  color: inherit;
+  text-decoration: none;
+}
+
+.xui-brand:hover {
+  color: inherit;
+}
+
+.xui-brand__mark {
+  display: grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  flex: none;
+  border-radius: 13px;
+  background: linear-gradient(135deg, var(--xui-primary) 0%, #7c3aed 55%, var(--xui-accent) 100%);
+  box-shadow: 0 8px 20px rgba(67, 97, 238, 0.45);
+  color: #fff;
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.xui-brand__text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.xui-brand__name {
+  font-size: 17px;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+  color: var(--xui-text);
+}
+
+.xui-brand__version {
+  font-size: 12px;
+  color: var(--xui-text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.xui-nav.ant-menu {
+  flex: 1;
+  border-inline-end: 0;
+  background: transparent;
+}
+
+.xui-topbar {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  height: var(--xui-topbar-height);
+  padding: 0 24px 0 16px;
+  background: rgba(255, 255, 255, 0.04);
+  border-bottom: 1px solid var(--xui-glass-border-soft);
+  -webkit-backdrop-filter: blur(18px) saturate(140%);
+  backdrop-filter: blur(18px) saturate(140%);
+}
+
+.xui-topbar__toggle {
+  display: grid;
+  place-items: center;
+  width: 36px;
+  height: 36px;
+  flex: none;
+  padding: 0;
+  color: var(--xui-text-2);
+  background: var(--xui-glass-bg);
+  border: 1px solid var(--xui-glass-border-soft);
+  border-radius: 11px;
+  cursor: pointer;
+  transition: color var(--xui-dur) var(--xui-ease), background var(--xui-dur) var(--xui-ease);
+}
+
+.xui-topbar__toggle:hover {
+  color: #fff;
+  background: var(--xui-glass-bg-strong);
+}
+
+.xui-topbar__title {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--xui-text);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.xui-topbar__spacer {
+  flex: 1;
+}
+
+.xui-topbar__version {
+  font-size: 12px;
+  color: var(--xui-text-3);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
 .xui-content {
-  margin: 24px 16px;
+  padding: 24px;
+  background: transparent;
+}
+
+.xui-scrim {
+  display: none;
 }
 
 @media (max-width: 768px) {
+  /*
+    窄屏下侧边栏浮在内容之上而不是把内容挤成一条：320–400px 的视口里，
+    240px 的侧栏一展开，剩给表格的宽度就没有意义了。
+  */
+  .xui-shell .xui-sider {
+    position: fixed;
+    inset-block: 0;
+    inset-inline-start: 0;
+    z-index: 70;
+    padding: 12px 0 12px 12px;
+  }
+
+  /* 收起时 antd 把宽度打成 0，这里再把内容裁掉，免得抽屉留一条边。 */
+  .xui-shell .xui-sider.ant-layout-sider-zero-width .xui-sider__inner {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  .xui-scrim {
+    display: block;
+    position: fixed;
+    inset: 0;
+    z-index: 60;
+    background: rgba(4, 7, 16, 0.55);
+    -webkit-backdrop-filter: blur(2px);
+    backdrop-filter: blur(2px);
+  }
+
+  .xui-topbar {
+    padding: 0 14px;
+  }
+
   .xui-content {
-    margin: 12px 8px;
+    padding: 14px;
   }
 }
+
+/* ------------------------------------------------------------------ *
+ * 登录页
+ * ------------------------------------------------------------------ */
 
 .xui-login {
   min-height: 100%;
   display: flex;
+  flex-direction: column;
   align-items: center;
   justify-content: center;
-  padding: 24px;
+  gap: 16px;
+  padding: 32px 20px;
 }
 
 .xui-login__card {
   width: 100%;
-  max-width: 380px;
+  max-width: 400px;
+  padding: 30px 28px 22px;
+}
+
+.xui-login__brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 26px;
 }
 
 .xui-login__title {
+  margin: 0;
+  font-size: 24px;
+  font-weight: 650;
+  letter-spacing: 0.01em;
+  color: var(--xui-text);
+}
+
+.xui-login__subtitle {
+  margin: 2px 0 0;
+  font-size: 13px;
+  color: var(--xui-text-3);
+}
+
+.xui-login__hint {
+  margin: 0;
   text-align: center;
-  color: #fff;
-  margin-bottom: 32px;
-  font-size: 28px;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.35);
 }
 
-.xui-card {
-  margin-bottom: 16px;
+.xui-login__foot {
+  margin: 0;
+  font-size: 12px;
+  color: var(--xui-text-3);
+  font-variant-numeric: tabular-nums;
 }
 
-.xui-gauge {
+/* ------------------------------------------------------------------ *
+ * 面板、瓦片、工具条
+ * ------------------------------------------------------------------ */
+
+.xui-panel {
+  padding: 20px 22px;
+  margin-bottom: 18px;
+}
+
+.xui-panel--flush {
+  padding: 0;
+  overflow: hidden;
+}
+
+.xui-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.xui-section-title {
+  margin: 0 0 12px;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.09em;
+  text-transform: uppercase;
+  color: var(--xui-text-3);
+}
+
+.xui-tiles {
+  display: grid;
+  gap: 16px;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+}
+
+.xui-tiles--wide {
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+}
+
+.xui-tile {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 18px 20px;
+}
+
+.xui-tile__label {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--xui-text-3);
+}
+
+.xui-tile__gauge {
+  display: grid;
+  place-items: center;
+  padding: 2px 0;
+}
+
+.xui-tile__value {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--xui-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.xui-tile__meta {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--xui-text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.xui-tile__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+}
+
+.xui-tile--gauge {
+  align-items: center;
   text-align: center;
 }
 
-.xui-kv p {
-  margin: 4px 0;
+.xui-duo {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px 16px;
 }
+
+.xui-duo__cell {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.xui-duo__cap {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--xui-text-3);
+}
+
+.xui-toolbar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 18px;
+  margin-bottom: 18px;
+}
+
+.xui-toolbar__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--xui-text);
+}
+
+.xui-toolbar__spacer {
+  flex: 1;
+}
+
+.xui-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 46px 24px;
+  text-align: center;
+}
+
+.xui-empty__mark {
+  display: grid;
+  place-items: center;
+  width: 52px;
+  height: 52px;
+  margin-bottom: 6px;
+  border-radius: 18px;
+  background: var(--xui-glass-bg-strong);
+  border: 1px solid var(--xui-glass-border-soft);
+  color: var(--xui-text-2);
+  font-size: 22px;
+}
+
+.xui-empty__title {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 600;
+  color: var(--xui-text);
+}
+
+.xui-empty__hint {
+  margin: 0;
+  max-width: 380px;
+  font-size: 13px;
+  color: var(--xui-text-3);
+}
+
+.xui-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px;
+  border-radius: 999px;
+  background: var(--xui-glass-bg-strong);
+  border: 1px solid var(--xui-glass-border-soft);
+  font-size: 12.5px;
+  color: var(--xui-text);
+  font-variant-numeric: tabular-nums;
+}
+
+.xui-chip--ok {
+  color: var(--xui-success);
+  border-color: rgba(52, 211, 153, 0.35);
+  background: rgba(52, 211, 153, 0.12);
+}
+
+.xui-chip--warn {
+  color: var(--xui-warning);
+  border-color: rgba(251, 191, 36, 0.35);
+  background: rgba(251, 191, 36, 0.12);
+}
+
+.xui-chip--bad {
+  color: var(--xui-danger);
+  border-color: rgba(251, 113, 133, 0.35);
+  background: rgba(251, 113, 133, 0.12);
+}
+
+.xui-danger-link {
+  color: var(--xui-danger);
+}
+
+.xui-danger-link:hover {
+  color: #ff9db0;
+}
+
+/* ------------------------------------------------------------------ *
+ * 表单与详情
+ * ------------------------------------------------------------------ */
 
 .xui-form-grid {
   display: flex;
   flex-wrap: wrap;
-  gap: 12px 24px;
+  gap: 10px 24px;
 }
 
 .xui-form-grid > .ant-form-item {
   margin-bottom: 8px;
 }
 
+.xui-kv {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.xui-kv p {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+  padding: 7px 2px;
+  border-bottom: 1px solid var(--xui-glass-border-soft);
+  color: var(--xui-text-3);
+  font-size: 13px;
+}
+
+.xui-kv p:last-child {
+  border-bottom: 0;
+}
+
 .xui-recovery-codes {
-  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-family: var(--xui-font-mono);
+  font-size: 13.5px;
+  letter-spacing: 0.04em;
+  color: var(--xui-text);
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 4px 16px;
+  gap: 6px 16px;
+  padding: 14px 16px;
+  border-radius: var(--xui-radius-sm);
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--xui-glass-border-soft);
+}
+
+.xui-qr {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 14px;
+}
+
+.xui-qr__frame {
+  padding: 12px;
+  border-radius: 18px;
+  background: #fff;
+  box-shadow: var(--xui-shadow);
+}
+
+.xui-qr__frame img {
+  display: block;
+  max-width: 100%;
+}
+
+/* ------------------------------------------------------------------ *
+ * antd 表面覆写
+ *
+ * 只动"默认是不透明白、会把玻璃戳穿"的那些地方。选择器的类数量对齐 antd
+ * 自己那条规则即可胜出（本文件排在注入样式之后），无需 !important。
+ * ------------------------------------------------------------------ */
+
+.ant-layout,
+.ant-layout-content,
+.ant-layout-header,
+.ant-layout-footer {
+  background: transparent;
+}
+
+/*
+  侧边栏收起时 antd 会在右缘挂一个绝对定位的浮动把手，它压在内容区左上角，
+  能把设置页第一个 tab 遮掉一半。顶栏里已经有一个明确的折叠按钮（两种状态
+  都在），这个把手是多余的且位置不受控，直接收掉。
+*/
+.ant-layout-sider-zero-width-trigger {
+  display: none;
+}
+
+.ant-card {
+  background: var(--xui-glass-bg);
+  border: 1px solid var(--xui-glass-border-soft);
+  border-radius: var(--xui-radius);
+  box-shadow: var(--xui-shadow);
+  -webkit-backdrop-filter: var(--xui-glass-blur);
+  backdrop-filter: var(--xui-glass-blur);
+}
+
+.ant-card .ant-card-head {
+  border-bottom-color: var(--xui-glass-border-soft);
+}
+
+.ant-list {
+  background: transparent;
+}
+
+.ant-list .ant-list-item {
+  border-block-end-color: var(--xui-glass-border-soft);
+}
+
+.ant-list-item-meta .ant-list-item-meta-title {
+  color: var(--xui-text);
+  font-weight: 550;
+}
+
+.ant-list-item-meta .ant-list-item-meta-description {
+  color: var(--xui-text-3);
+}
+
+/* --- 菜单：选中项是一枚发光胶囊 --- */
+
+.xui-nav.ant-menu-inline .ant-menu-item,
+.xui-nav.ant-menu-inline .ant-menu-submenu-title {
+  border-radius: 12px;
+  transition: background var(--xui-dur) var(--xui-ease), color var(--xui-dur) var(--xui-ease);
+}
+
+.xui-nav.ant-menu-inline .ant-menu-item-selected {
+  background: linear-gradient(90deg, rgba(67, 97, 238, 0.45) 0%, rgba(67, 97, 238, 0.16) 100%);
+  box-shadow: 0 6px 18px rgba(67, 97, 238, 0.28), inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+}
+
+.xui-nav.ant-menu-inline .ant-menu-sub {
+  background: rgba(255, 255, 255, 0.03);
+  border-radius: 12px;
+}
+
+/* --- 表格 --- */
+
+.xui-table .ant-table {
+  background: transparent;
+}
+
+.xui-table .ant-table .ant-table-thead > tr > th {
+  background: rgba(255, 255, 255, 0.06);
+  border-bottom-color: var(--xui-glass-border-soft);
+  color: var(--xui-text-2);
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.xui-table .ant-table .ant-table-thead > tr > th::before {
+  display: none;
+}
+
+.xui-table .ant-table .ant-table-tbody > tr > td {
+  border-bottom-color: var(--xui-glass-border-soft);
+  font-variant-numeric: tabular-nums;
+}
+
+.xui-table .ant-table-tbody > tr.ant-table-row:hover > td {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/*
+  钉住的列必须自带底色，否则横向滚动时下面的内容会从它身上穿过去 ——
+  而这一列恰恰是操作列，看不清等于用不了。
+*/
+.xui-table .ant-table-cell-fix-left,
+.xui-table .ant-table-cell-fix-right {
+  background: var(--xui-fixed-cell-bg);
+  -webkit-backdrop-filter: blur(14px);
+  backdrop-filter: blur(14px);
+}
+
+.xui-table .ant-table-tbody > tr.ant-table-row:hover > td.ant-table-cell-fix-left,
+.xui-table .ant-table-tbody > tr.ant-table-row:hover > td.ant-table-cell-fix-right {
+  background: rgba(24, 31, 52, 0.96);
+}
+
+.xui-table .ant-table .ant-table-thead > tr > th.ant-table-cell-fix-right {
+  background: var(--xui-fixed-cell-bg);
+}
+
+.xui-table .ant-table-ping-right .ant-table-cell-fix-right-first::after {
+  box-shadow: inset -12px 0 12px -10px rgba(0, 0, 0, 0.6);
+}
+
+.xui-table .ant-table-body::-webkit-scrollbar,
+.xui-table .ant-table-content::-webkit-scrollbar {
+  height: 9px;
+  width: 9px;
+}
+
+.xui-table .ant-table-body::-webkit-scrollbar-thumb,
+.xui-table .ant-table-content::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.22);
+  border-radius: 999px;
+}
+
+/* --- 弹窗、抽屉、下拉 --- */
+
+.ant-modal .ant-modal-content,
+.ant-drawer .ant-drawer-content {
+  background: var(--xui-elevated-bg);
+  border: 1px solid var(--xui-glass-border);
+  box-shadow: var(--xui-shadow-lg);
+  -webkit-backdrop-filter: blur(30px) saturate(160%);
+  backdrop-filter: blur(30px) saturate(160%);
+}
+
+.ant-modal .ant-modal-content {
+  border-radius: 22px;
+}
+
+.ant-modal .ant-modal-header,
+.ant-modal .ant-modal-footer {
+  background: transparent;
+}
+
+.ant-drawer .ant-drawer-header,
+.ant-drawer .ant-drawer-footer {
+  border-color: var(--xui-glass-border-soft);
+  background: transparent;
+}
+
+.ant-select-dropdown,
+.ant-dropdown .ant-dropdown-menu,
+.ant-picker-dropdown .ant-picker-panel-container {
+  background: var(--xui-elevated-bg);
+  border: 1px solid var(--xui-glass-border-soft);
+  box-shadow: var(--xui-shadow-lg);
+  -webkit-backdrop-filter: blur(26px) saturate(150%);
+  backdrop-filter: blur(26px) saturate(150%);
+}
+
+.ant-tooltip .ant-tooltip-inner {
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+  border: 1px solid var(--xui-glass-border-soft);
+}
+
+.ant-message .ant-message-notice-content {
+  background: var(--xui-elevated-bg);
+  border: 1px solid var(--xui-glass-border-soft);
+  -webkit-backdrop-filter: blur(22px) saturate(150%);
+  backdrop-filter: blur(22px) saturate(150%);
+}
+
+/* --- 标签页 --- */
+
+.ant-tabs.ant-tabs-card > .ant-tabs-nav .ant-tabs-tab {
+  background: rgba(255, 255, 255, 0.04);
+  border-color: var(--xui-glass-border-soft);
+  border-radius: 12px 12px 0 0;
+  transition: background var(--xui-dur) var(--xui-ease);
+}
+
+.ant-tabs.ant-tabs-card > .ant-tabs-nav .ant-tabs-tab-active {
+  background: var(--xui-glass-bg-strong);
+  border-bottom-color: transparent;
+}
+
+.ant-tabs > .ant-tabs-nav::before {
+  border-bottom-color: var(--xui-glass-border-soft);
+}
+
+/* --- 表单控件 --- */
+
+.ant-input,
+.ant-input-affix-wrapper,
+.ant-input-number,
+.ant-input-number-group-addon,
+.ant-picker,
+.ant-select .ant-select-selector {
+  transition: border-color var(--xui-dur) var(--xui-ease), box-shadow var(--xui-dur) var(--xui-ease);
+}
+
+.ant-form-item .ant-form-item-label > label {
+  color: var(--xui-text-2);
+}
+
+.ant-divider .ant-divider-inner-text {
+  color: var(--xui-text-3);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.ant-divider-horizontal.ant-divider-with-text::before,
+.ant-divider-horizontal.ant-divider-with-text::after {
+  border-block-start-color: var(--xui-glass-border-soft);
+}
+
+.ant-btn-primary {
+  box-shadow: 0 8px 22px rgba(67, 97, 238, 0.35);
+}
+
+.ant-progress .ant-progress-text {
+  color: var(--xui-text);
+  font-variant-numeric: tabular-nums;
+}
+
+/* antd 把加载遮罩钉在 400px 高以内，长页面滚下去就看不到"正在忙"了。 */
+.ant-spin-nested-loading > div > .ant-spin {
+  max-height: none;
+}
+
+/* 全局滚动条 */
+
+* {
+  scrollbar-color: rgba(255, 255, 255, 0.24) transparent;
+  scrollbar-width: thin;
+}
+
+::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(255, 255, 255, 0.2);
+  border-radius: 999px;
+}
+
+::selection {
+  background: rgba(67, 97, 238, 0.45);
+}
+
+/* ------------------------------------------------------------------ *
+ * 可访问性回退
+ * ------------------------------------------------------------------ */
+
+/*
+  用户明确要求少一点动效时，极光就不该再漂了。
+*/
+@media (prefers-reduced-motion: reduce) {
+  body::before {
+    animation: none;
+  }
+
+  *,
+  *::before,
+  *::after {
+    animation-duration: 1ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 1ms !important;
+    scroll-behavior: auto !important;
+  }
+}
+
+/*
+  磨砂是增强，不是前提。系统开了"减少透明度"，或者浏览器压根不支持
+  backdrop-filter（Firefox 曾长期默认关闭），都回落到实心深色面板：
+  少了层次感，但每一个字仍然清清楚楚。
+*/
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --xui-glass-bg: #131a2c;
+    --xui-glass-bg-strong: #1b2338;
+    --xui-glass-border: rgba(255, 255, 255, 0.22);
+    --xui-glass-border-soft: rgba(255, 255, 255, 0.14);
+    --xui-glass-blur: none;
+    --xui-glass-highlight: none;
+    --xui-elevated-bg: #151c31;
+    --xui-fixed-cell-bg: #10162a;
+  }
+
+  body::before {
+    background-image: none;
+  }
+
+  body::after {
+    display: none;
+  }
+}
+
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  :root {
+    --xui-glass-bg: rgba(19, 26, 44, 0.92);
+    --xui-glass-bg-strong: rgba(27, 35, 56, 0.94);
+    --xui-elevated-bg: rgba(21, 28, 49, 0.98);
+    --xui-fixed-cell-bg: rgba(16, 22, 42, 0.99);
+  }
 }
